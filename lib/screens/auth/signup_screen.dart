@@ -42,18 +42,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       );
       if (!mounted) return;
 
-      if (response.session != null) {
-        // Email confirmation is OFF in your Supabase project — user is signed in immediately.
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()), // swap for your HomeScreen
-              (route) => false,
-        );
-      } else {
-        // Email confirmation is ON — user must verify before they can log in.
-        setState(() {
-          _error = null;
-        });
+      if (response.session == null) {
+        // Email confirmation is ON — no session yet, AuthGate will show
+        // LoginScreen on its own once this dialog closes.
         showDialog(
           context: context,
           builder: (_) => AlertDialog(
@@ -61,16 +52,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
             content: Text("We've sent a confirmation link to ${_email.text.trim()}. Please verify before logging in."),
             actions: [
               TextButton(
-                onPressed: () {
-                  Navigator.pop(context); // close dialog
-                  Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
-                },
+                onPressed: () => Navigator.pop(context), // just close the dialog
                 child: const Text('OK'),
               ),
             ],
           ),
         );
       }
+      // If response.session != null (confirmation OFF), do nothing here —
+      // AuthGate detects the new session and routes to CreateProfileScreen
+      // automatically since profile_completed is false for a brand-new user.
     } on AuthException catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);
