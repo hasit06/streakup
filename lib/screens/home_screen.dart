@@ -65,7 +65,7 @@ class HomeScreen extends StatelessWidget {
               _buildTopHeader(context),
               const SizedBox(height: 16),
 
-              Text('Hi, Hasit', style: AppText.title(size: 28)),
+              Text('Hi, Hasit', style: AppText.headline(size: 28)),
               const SizedBox(height: 2),
               Text("Let's make today amazing!", style: AppText.body(size: 14, weight: FontWeight.w700)),
               const SizedBox(height: 20),

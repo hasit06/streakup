@@ -25,8 +25,8 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
   String _gender = 'male';
   int _selectedAvatarIndex = 0;
 
-  final List<String> _maleAvatars = List.generate(8, (i) => 'assets/male_$i.png');
-  final List<String> _femaleAvatars = List.generate(8, (i) => 'assets/female_$i.png');
+  final List<String> _maleAvatars = List.generate(6, (i) => 'assets/avatars/M${i + 1}.png');
+  final List<String> _femaleAvatars = List.generate(6, (i) => 'assets/avatars/F${i + 1}.png');
 
   @override
   void dispose() {
@@ -47,14 +47,30 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
     }
   }
 
-  void _prevPage() {
+  void _prevPage() async {
     if (_currentPage > 0) {
       _pageController.previousPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
     } else {
-      Navigator.pop(context);
+      // No screen to pop back to — this is the first step, so back
+      // means "cancel and return to login," not navigate within the app.
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Cancel profile setup?'),
+          content: const Text("You'll need to log in again to continue setting up your profile."),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Stay')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Log out')),
+          ],
+        ),
+      );
+      if (confirm == true) {
+        await Supabase.instance.client.auth.signOut();
+        // No manual navigation needed — AuthGate reacts to the sign-out
+        // and shows LoginScreen automatically.
+      }
     }
   }
-
   Future<void> _pickDob() async {
     final picked = await showDatePicker(
       context: context,
@@ -328,8 +344,8 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: 8,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, crossAxisSpacing: 16, mainAxisSpacing: 16),
+            itemCount: 6,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 16, mainAxisSpacing: 16),
             itemBuilder: (context, index) {
               bool isSelected = _selectedAvatarIndex == index;
               return GestureDetector(
