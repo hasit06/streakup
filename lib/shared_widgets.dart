@@ -1,5 +1,166 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'main.dart'; // <-- ADJUST: path to wherever main.dart lives relative to this file
+import 'screens/main_wrapper.dart'; // <-- ADJUST: path to wherever MainWrapper lives
+import 'screens/notifications_screen.dart'; // adjust path if your screens folder is elsewhere
+
+void showAddOptionsSheet(
+    BuildContext context, {
+      required VoidCallback onAddTask,
+      required VoidCallback onAddJournal,
+    }) {
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (context) => Container(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 48,
+            height: 5,
+            margin: const EdgeInsets.only(bottom: 24),
+            decoration: BoxDecoration(
+              color: const Color(0xFFD6D3EE),
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          Text(
+            'What do you want to add?',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.nunito(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: AppColors.ink,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Small steps. Big progress.',
+            style: GoogleFonts.nunito(fontSize: 14, color: AppColors.sub),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: _AddOptionCard(
+                  icon: Icons.description_outlined,
+                  badgeIcon: Icons.add,
+                  title: 'Add Task',
+                  subtitle: 'Create a new\ntask or habit',
+                  onTap: () {
+                    Navigator.pop(context);
+                    onAddTask();
+                  },
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _AddOptionCard(
+                  icon: Icons.auto_stories_outlined,
+                  badgeIcon: Icons.edit,
+                  title: 'Journal Entry',
+                  subtitle: 'Write about\nyour day',
+                  onTap: () {
+                    Navigator.pop(context);
+                    onAddJournal();
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              width: 52,
+              height: 52,
+              decoration: const BoxDecoration(
+                color: Color(0xFFEDEBFB),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.close_rounded, color: AppColors.purple, size: 24),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _AddOptionCard extends StatelessWidget {
+  final IconData icon;
+  final IconData badgeIcon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _AddOptionCard({
+    required this.icon,
+    required this.badgeIcon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 12),
+        decoration: BoxDecoration(
+          border: Border.all(color: AppColors.cardBorder, width: 1.5),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(icon, size: 44, color: AppColors.purple),
+                Positioned(
+                  right: -6,
+                  bottom: -4,
+                  child: Container(
+                    width: 22,
+                    height: 22,
+                    decoration: const BoxDecoration(
+                      color: AppColors.purple,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(badgeIcon, size: 13, color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(
+              title,
+              style: GoogleFonts.nunito(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.nunito(fontSize: 12.5, color: AppColors.sub, height: 1.3),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class AppGradient {
   static const bg = LinearGradient(
@@ -34,7 +195,8 @@ BoxDecoration softCard({double radius = 22, Color? fill}) => BoxDecoration(
 class GradientScaffold extends StatelessWidget {
   final Widget child;
   final Widget? bottomNavigationBar;
-  const GradientScaffold({super.key, required this.child, this.bottomNavigationBar});
+  final Widget? endDrawer;
+  const GradientScaffold({super.key, required this.child, this.bottomNavigationBar, this.endDrawer});
 
   @override
   Widget build(BuildContext context) {
@@ -42,6 +204,7 @@ class GradientScaffold extends StatelessWidget {
       backgroundColor: Colors.transparent,
       extendBody: true,
       bottomNavigationBar: bottomNavigationBar,
+      endDrawer: endDrawer,
       body: Container(
         decoration: const BoxDecoration(gradient: AppGradient.bg),
         child: SafeArea(child: child),
@@ -59,26 +222,47 @@ class AppTopBar extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        _circleBtn(icon: Icons.arrow_back_rounded, onTap: onBack ?? () {}),
+        _circleBtn(icon: Icons.arrow_back_rounded, onTap: onBack ?? _goHome),
         Row(
           children: [
-            _circleBtn(icon: Icons.notifications_none_rounded, badge: true, onTap: () {}),
+            _circleBtn(
+              icon: Icons.notifications_none_rounded,
+              badge: true,
+              onTap: () {
+                print('bell tapped'); // TEMP
+                navigatorKey.currentState?.push(
+                  MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                );
+              },
+            ),
             const SizedBox(width: 10),
-            ClipOval(
-              child: Container(
-                width: 44,
-                height: 44,
-                color: Colors.white,
-                child: Image.asset(
-                  'assets/avatar.png',
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Icon(Icons.person_rounded, color: AppColors.purple, size: 26),
+            Builder(
+              builder: (innerContext) => GestureDetector(
+                onTap: () => Scaffold.of(innerContext).openEndDrawer(),
+                child: ClipOval(
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    color: Colors.white,
+                    child: Image.asset(
+                      'assets/avatar.png',
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const Icon(Icons.person_rounded, color: AppColors.purple, size: 26),
+                    ),
+                  ),
                 ),
               ),
             ),
           ],
         ),
       ],
+    );
+  }
+
+  void _goHome() {
+    navigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const MainWrapper()),
+          (route) => false,
     );
   }
 

@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/app_theme.dart';
 import 'streak_progress_screen.dart';
 import 'ProfileScreen.dart';
+import 'notifications_screen.dart';
 
 class FlameLogo extends StatelessWidget {
   final double size;
@@ -20,7 +21,7 @@ class FlameLogo extends StatelessWidget {
       width: size,
       height: size,
       decoration: const BoxDecoration(
-        color: Color(0xFFFFF0EC), // not yet in AppColors — flag if you want it added
+        color: Color(0xFFFFF0EC),
         shape: BoxShape.circle,
       ),
       child: Padding(
@@ -32,7 +33,9 @@ class FlameLogo extends StatelessWidget {
 }
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+  final ValueChanged<int> onNavigateToTab; // NEW — 1 = Tasks tab, 2 = Journal tab
+
+  const HomeScreen({super.key, required this.onNavigateToTab});
 
   Future<void> _logout(BuildContext context) async {
     final confirm = await showDialog<bool>(
@@ -53,45 +56,49 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      endDrawer: const ProfileScreen(),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildTopHeader(context),
-              const SizedBox(height: 16),
+    // NOTE: no Scaffold here anymore — MainWrapper's GradientScaffold owns
+    // the endDrawer/background/bottom nav for every tab now.
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildTopHeader(context),
+          const SizedBox(height: 16),
 
-              Text('Hi, Hasit', style: AppText.headline(size: 28)),
-              const SizedBox(height: 2),
-              Text("Let's make today amazing!", style: AppText.body(size: 14, weight: FontWeight.w700)),
-              const SizedBox(height: 20),
+          Text('Hi, Hasit', style: AppText.headline(size: 28)),
+          const SizedBox(height: 2),
+          Text("Let's make today amazing!", style: AppText.body(size: 14, weight: FontWeight.w700)),
+          const SizedBox(height: 20),
 
-              GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const StreakProgressScreen()),
-                  );
-                },
-                child: _buildStreakCard(),
-              ),
-              const SizedBox(height: 16),
-
-              _buildTodayProgressCard(),
-              const SizedBox(height: 16),
-
-              _buildUpcomingTaskCard(),
-              const SizedBox(height: 20),
-
-              _buildWeeklyTrackerRow(),
-              const SizedBox(height: 20),
-            ],
+          GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const StreakProgressScreen()),
+              );
+            },
+            child: _buildStreakCard(),
           ),
-        ),
+          const SizedBox(height: 16),
+
+          // Tapping this now switches to the Journal tab (index 2)
+          GestureDetector(
+            onTap: () => onNavigateToTab(2),
+            child: _buildTodayProgressCard(),
+          ),
+          const SizedBox(height: 16),
+
+          // Tapping this now switches to the Tasks tab (index 1)
+          GestureDetector(
+            onTap: () => onNavigateToTab(1),
+            child: _buildUpcomingTaskCard(),
+          ),
+          const SizedBox(height: 20),
+
+          _buildWeeklyTrackerRow(),
+          const SizedBox(height: 20),
+        ],
       ),
     );
   }
@@ -114,8 +121,15 @@ class HomeScreen extends StatelessWidget {
         ),
         Row(
           children: [
-            const Icon(Icons.notifications_none_rounded, color: AppColors.ink, size: 28),
+            GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+              ),
+              child: const Icon(Icons.notifications_none_rounded, color: AppColors.ink, size: 28),
+            ),
             const SizedBox(width: 12),
+            // Builder finds MainWrapper's Scaffold now (the only one in the tree)
             Builder(
               builder: (innerContext) => GestureDetector(
                 onTap: () => Scaffold.of(innerContext).openEndDrawer(),

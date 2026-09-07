@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'streak_progress_screen.dart';
 import 'calendar_screen.dart';
+import 'notifications_screen.dart';
 
 class _Task {
   String title;
@@ -100,87 +101,94 @@ class _TodoScreenState extends State<TodoScreen> {
     return names[month - 1];
   }
 
+  // Change build() to return the content directly instead of a Scaffold:
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7F6FF),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 110),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildTopBar(),
-              const SizedBox(height: 12),
-              Text(
-                'To-do List',
-                style: GoogleFonts.schoolbell(fontSize: 32, fontWeight: FontWeight.bold, color: const Color(0xFF1E1C3B)),
-              ),
-              const SizedBox(height: 16),
-              _buildInfoCards(now),
-              const SizedBox(height: 16),
-              _buildFilterTabs(),
-              const SizedBox(height: 16),
-              _buildAddTaskRow(),
-              const SizedBox(height: 12),
-              _buildTaskList(),
-            ],
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 110),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildTopBar(),
+          const SizedBox(height: 12),
+          Text(
+            'To-do List',
+            style: GoogleFonts.schoolbell(fontSize: 32, fontWeight: FontWeight.bold, color: const Color(0xFF1E1C3B)),
           ),
-        ),
+          const SizedBox(height: 16),
+          _buildInfoCards(now),
+          const SizedBox(height: 16),
+          _buildFilterTabs(),
+          const SizedBox(height: 16),
+          _buildAddTaskRow(),
+          const SizedBox(height: 12),
+          _buildTaskList(),
+        ],
       ),
     );
   }
 
+// And update _buildTopBar's avatar (currently a dead-end Container) to this:
   Widget _buildTopBar() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        GestureDetector(
-          onTap: () {
-            if (Navigator.canPop(context)) Navigator.pop(context);
-          },
-          child: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))],
-            ),
-            child: const Icon(Icons.arrow_back_rounded, color: Color(0xFF1E1C3B)),
+        // The back arrow no longer makes sense on a bottom-nav tab (nothing to pop to)
+        // — safe to leave as-is since Navigator.canPop already guards it, or remove entirely.
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))],
           ),
+          child: const Icon(Icons.checklist_rounded, color: Color(0xFF1E1C3B)), // swapped for a static icon since there's nothing to go "back" to
         ),
         Row(
           children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(Icons.notifications_none_rounded, color: Color(0xFF1E1C3B), size: 26),
-                Positioned(
-                  top: -1,
-                  right: -1,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+            GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+              ),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  const Icon(Icons.notifications_none_rounded, color: Color(0xFF1E1C3B), size: 26),
+                  Positioned(
+                    top: -1,
+                    right: -1,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(width: 14),
-            Container(
-              width: 44,
-              height: 44,
-              decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFE2DDFE)),
-              child: const Icon(Icons.person_rounded, color: Color(0xFF6C5CE7)),
+            Builder(
+              builder: (innerContext) => GestureDetector(
+                onTap: () => Scaffold.of(innerContext).openEndDrawer(),
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFE2DDFE)),
+                  child: const Icon(Icons.person_rounded, color: Color(0xFF6C5CE7)),
+                ),
+              ),
             ),
           ],
         ),
       ],
     );
   }
+
+
 
   Widget _buildInfoCards(DateTime now) {
     return Row(
