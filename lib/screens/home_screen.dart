@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/app_theme.dart';
 import 'streak_progress_screen.dart';
 import 'ProfileScreen.dart';
-import 'notifications_screen.dart';
+import '../service/home_service.dart';
 import 'profile_detail_screen.dart';
 
 class FlameLogo extends StatelessWidget {
@@ -33,10 +33,40 @@ class FlameLogo extends StatelessWidget {
   }
 }
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   final ValueChanged<int> onNavigateToTab;
 
   const HomeScreen({super.key, required this.onNavigateToTab});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final _homeService = HomeService();
+  HomeData? _data;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final data = await _homeService.fetchHomeData();
+      if (mounted) setState(() { _data = data; _loading = false; });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load home data: $e')),
+        );
+      }
+    }
+  }
 
   Future<void> _logout(BuildContext context) async {
     final confirm = await showDialog<bool>(
@@ -57,53 +87,64 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildTopHeader(context),
-          const SizedBox(height: 16),
+    if (_loading || _data == null) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.purple));
+    }
+    final data = _data!;
 
-          Text('Hi, Hasit', style: AppText.headline(size: 28)),
-          const SizedBox(height: 2),
-          Text("Let's make today amazing!", style: AppText.body(size: 14, weight: FontWeight.w700)),
-          const SizedBox(height: 20),
+    return RefreshIndicator(
+      onRefresh: _load,
+      color: AppColors.purple,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildTopHeader(context , data),
+            const SizedBox(height: 16),
 
-          GestureDetector(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const StreakProgressScreen()),
-              );
-            },
-            child: _buildStreakCard(),
-          ),
-          const SizedBox(height: 16),
+            Text('Hi, ${data.fullName}', style: AppText.headline(size: 28)),
+            const SizedBox(height: 2),
+            Text("Let's make today amazing!", style: AppText.body(size: 14, weight: FontWeight.w700)),
+            const SizedBox(height: 20),
 
-          GestureDetector(
-            onTap: () => onNavigateToTab(2),
-            child: _buildTodayProgressCard(),
-          ),
-          const SizedBox(height: 16),
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const StreakProgressScreen()),
+                ).then((_) => _load()); // refresh in case XP/streak changed
+              },
+              child: _buildStreakCard(data),
+            ),
+            const SizedBox(height: 16),
 
-          GestureDetector(
-            onTap: () => onNavigateToTab(1),
-            child: _buildUpcomingTaskCard(),
-          ),
-          const SizedBox(height: 20),
+            GestureDetector(
+              onTap: () => widget.onNavigateToTab(2),
+              child: _buildTodayProgressCard(data),
+            ),
+            const SizedBox(height: 16),
 
-          _buildWeeklyTrackerRow(),
-          const SizedBox(height: 20),
-        ],
+            GestureDetector(
+              onTap: () => widget.onNavigateToTab(1),
+              child: _buildUpcomingTaskCard(data),
+            ),
+            const SizedBox(height: 20),
+
+            _buildWeeklyTrackerRow(data),
+            const SizedBox(height: 20),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildTopHeader(BuildContext context) {
+  Widget _buildTopHeader(BuildContext context, dynamic data) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
+        // Hamburger — opens the menu drawer (Statistics/Settings/Logout etc.)
         Builder(
           builder: (innerContext) => GestureDetector(
             onTap: () => Scaffold.of(innerContext).openEndDrawer(),
@@ -123,25 +164,27 @@ class HomeScreen extends StatelessWidget {
         ),
         Row(
           children: [
-            GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-              ),
-              child: const Icon(Icons.notifications_none_rounded, color: AppColors.ink, size: 28),
-            ),
+            const Icon(Icons.notifications_none_rounded, color: AppColors.ink, size: 28),
             const SizedBox(width: 12),
+            // Avatar — navigates to the actual profile screen
             GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ProfileDetailScreen()),
-              ),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ProfileDetailScreen()),
+                );
+              },
               onLongPress: () => _logout(context),
-              child: Container(
-                width: 44,
-                height: 44,
-                decoration: const BoxDecoration(shape: BoxShape.circle, color: AppColors.lightPurple),
-                child: const Icon(Icons.person_rounded, color: AppColors.purple),
+              child: ClipOval(
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  color: AppColors.lightPurple,
+                  child: data.avatarPath != null
+                      ? Image.asset(data.avatarPath!, fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const Icon(Icons.person_rounded, color: AppColors.purple))
+                      : const Icon(Icons.person_rounded, color: AppColors.purple),
+                ),
               ),
             ),
           ],
@@ -150,7 +193,7 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStreakCard() {
+  Widget _buildStreakCard(HomeData data) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: appCard(radius: 28).copyWith(
@@ -166,7 +209,7 @@ class HomeScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('67', style: AppText.title(size: 48).copyWith(height: 1.0)),
+                Text('${data.currentStreak}', style: AppText.title(size: 48).copyWith(height: 1.0)),
                 Text(
                   'DAY STREAK',
                   style: AppText.body(size: 13, weight: FontWeight.w800).copyWith(letterSpacing: 0.5),
@@ -180,7 +223,7 @@ class HomeScreen extends StatelessWidget {
                     children: [
                       const Icon(Icons.emoji_events_outlined, size: 15, color: AppColors.purple),
                       const SizedBox(width: 4),
-                      Text('6700+ Xp', style: AppText.body(size: 12, weight: FontWeight.w800, color: AppColors.purple)),
+                      Text('${data.totalXp} Xp', style: AppText.body(size: 12, weight: FontWeight.w800, color: AppColors.purple)),
                       Text('  |  This week', style: AppText.body(size: 11, weight: FontWeight.w700)),
                     ],
                   ),
@@ -193,7 +236,10 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildTodayProgressCard() {
+  Widget _buildTodayProgressCard(HomeData data) {
+    final now = DateTime.now();
+    final dayLabel = '${now.day} ${_monthName(now.month)}';
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: appCard(radius: 28),
@@ -206,7 +252,7 @@ class HomeScreen extends StatelessWidget {
               children: [
                 const TextSpan(text: 'Today, '),
                 TextSpan(
-                  text: '28th July',
+                  text: dayLabel,
                   style: AppText.body(size: 18, weight: FontWeight.w900, color: AppColors.ink)
                       .copyWith(decoration: TextDecoration.underline),
                 ),
@@ -226,14 +272,14 @@ class HomeScreen extends StatelessWidget {
                       width: 76,
                       height: 76,
                       child: CircularProgressIndicator(
-                        value: 6 / 7,
+                        value: (data.daysCompletedThisWeek / 7).clamp(0, 1),
                         strokeWidth: 9,
                         backgroundColor: AppColors.lightPurple,
                         valueColor: const AlwaysStoppedAnimation<Color>(AppColors.purple),
                         strokeCap: StrokeCap.round,
                       ),
                     ),
-                    Text('6/7', style: AppText.title(size: 20)),
+                    Text('${data.daysCompletedThisWeek}/7', style: AppText.title(size: 18)),
                   ],
                 ),
               ),
@@ -247,7 +293,11 @@ class HomeScreen extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text('Journal', style: AppText.title(size: 16)),
-                        const Icon(Icons.check_circle_outline_rounded, color: AppColors.purple, size: 24),
+                        Icon(
+                          data.journalDoneToday ? Icons.check_circle_rounded : Icons.check_circle_outline_rounded,
+                          color: AppColors.purple,
+                          size: 24,
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -255,7 +305,11 @@ class HomeScreen extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text('Mood', style: AppText.title(size: 16)),
-                        const Icon(Icons.sentiment_satisfied_alt_rounded, color: AppColors.purple, size: 24),
+                        Icon(
+                          data.moodSetToday ? Icons.sentiment_satisfied_alt_rounded : Icons.sentiment_neutral_rounded,
+                          color: AppColors.purple,
+                          size: 24,
+                        ),
                       ],
                     ),
                   ],
@@ -268,7 +322,9 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildUpcomingTaskCard() {
+  Widget _buildUpcomingTaskCard(HomeData data) {
+    final hasTask = data.upcomingTaskTitle != null;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: appCard(radius: 28),
@@ -293,7 +349,8 @@ class HomeScreen extends StatelessWidget {
               color: AppColors.lightPurple.withOpacity(0.4),
               borderRadius: BorderRadius.circular(18),
             ),
-            child: Row(
+            child: hasTask
+                ? Row(
               children: [
                 const Icon(Icons.radio_button_unchecked_rounded, color: AppColors.sub, size: 22),
                 const SizedBox(width: 12),
@@ -301,12 +358,12 @@ class HomeScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Study Data Structures', style: AppText.body(size: 14, weight: FontWeight.w800, color: AppColors.ink)),
+                      Text(data.upcomingTaskTitle!, style: AppText.body(size: 14, weight: FontWeight.w800, color: AppColors.ink)),
                       Row(
                         children: [
                           const Icon(Icons.menu_book_rounded, size: 13, color: AppColors.purple),
                           const SizedBox(width: 4),
-                          Text('Study', style: AppText.body(size: 12, weight: FontWeight.w700, color: AppColors.purple)),
+                          Text(data.upcomingTaskCategory ?? 'Personal', style: AppText.body(size: 12, weight: FontWeight.w700, color: AppColors.purple)),
                         ],
                       ),
                     ],
@@ -314,25 +371,49 @@ class HomeScreen extends StatelessWidget {
                 ),
                 const Icon(Icons.chevron_right_rounded, color: AppColors.sub, size: 22),
               ],
-            ),
+            )
+                : Text('No pending tasks — nice work! 🎉', style: AppText.body(size: 13, weight: FontWeight.w700, color: AppColors.sub)),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildWeeklyTrackerRow() {
+  Widget _buildWeeklyTrackerRow(HomeData data) {
+    final today = DateTime.now();
+    final labels = ['M', 'T', 'W', 'Th', 'F', 'Sa', 'S'];
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        _buildDayCapsule('M', const Color(0xFFE9F8EE), AppColors.success, iconType: 'dot'),
-        _buildDayCapsule('T', const Color(0xFFFCEAEB), AppColors.error, iconType: 'dot'),
-        _buildDayCapsule('W', const Color(0xFFFFF7E5), const Color(0xFFF2C94C), iconType: 'dot'),
-        _buildDayCapsule('Th', const Color(0xFFFFEFE5), const Color(0xFFF2994A), iconType: 'minus'),
-        _buildDayCapsule('F', const Color(0xFFE9F8EE), AppColors.success, iconType: 'dot'),
-        _buildDayCapsule('Sa', AppColors.lightPurple, AppColors.purple, iconType: 'circle'),
-        _buildDayCapsule('S', AppColors.lightPurple, AppColors.purple, iconType: 'circle'),
-      ],
+      children: List.generate(7, (i) {
+        final weekdayNum = i + 1; // 1=Mon..7=Sun
+        final isPast = weekdayNum < today.weekday;
+        final isToday = weekdayNum == today.weekday;
+        final completed = data.weekdayCompletion[weekdayNum] ?? false;
+
+        Color bg;
+        Color iconColor;
+        String iconType;
+        if (completed) {
+          bg = const Color(0xFFE9F8EE);
+          iconColor = AppColors.success;
+          iconType = 'dot';
+        } else if (isPast) {
+          bg = const Color(0xFFFCEAEB);
+          iconColor = AppColors.error;
+          iconType = 'minus';
+        } else if (isToday) {
+          bg = const Color(0xFFFFF7E5);
+          iconColor = const Color(0xFFF2C94C);
+          iconType = 'dot';
+        } else {
+          bg = AppColors.lightPurple;
+          iconColor = AppColors.purple;
+          iconType = 'circle';
+        }
+
+        return _buildDayCapsule(labels[i], bg, iconColor, iconType: iconType);
+      }),
     );
   }
 
@@ -363,5 +444,10 @@ class HomeScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _monthName(int month) {
+    const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return names[month - 1];
   }
 }

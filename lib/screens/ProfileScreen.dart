@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'settings.dart'; // Ensure this matches your settings file name
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'profile_detail_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -66,23 +67,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         ),
                         const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            Text(
-                              'View your profile',
-                              style: GoogleFonts.nunito(
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.pop(context); // close the drawer first
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const ProfileDetailScreen()),
+                            );
+                          },
+                          child: Row(
+                            children: [
+                              Text('View your profile', style: GoogleFonts.nunito(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
                                 color: const Color(0xFF6C5CE7),
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            const Icon(
-                              Icons.chevron_right_rounded,
-                              size: 16,
-                              color: Color(0xFF6C5CE7),
-                            ),
-                          ],
+                              )),
+                              const SizedBox(width: 4),
+                              const Icon(Icons.chevron_right_rounded, size: 16, color: Color(0xFF6C5CE7)),
+                            ],
+                          ),
                         ),
                       ],
                     ),

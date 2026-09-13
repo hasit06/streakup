@@ -178,6 +178,8 @@ class AppColors {
   static const cardBorder = Color(0xFFECEFFC);
   static const green = Color(0xFF4CAF7D);
   static const orange = Color(0xFFFF7A45);
+  static const white = Colors.white; // NEW
+  static const lightPurple = Color(0xFFEDEBFB);
 }
 
 BoxDecoration softCard({double radius = 22, Color? fill}) => BoxDecoration(

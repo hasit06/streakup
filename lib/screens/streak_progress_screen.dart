@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'calendar_widgets.dart';
+import '../service/streak_service.dart';
 
 class StreakProgressScreen extends StatefulWidget {
   const StreakProgressScreen({super.key});
@@ -10,78 +11,76 @@ class StreakProgressScreen extends StatefulWidget {
 }
 
 class _StreakProgressScreenState extends State<StreakProgressScreen> {
+  final _streakService = StreakService();
+  StreakStats? _stats;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStats();
+  }
+
+  Future<void> _loadStats() async {
+    setState(() => _loading = true);
+    try {
+      final stats = await _streakService.fetchStats();
+      if (mounted) setState(() { _stats = stats; _loading = false; });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load streak stats: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F6FF),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildTopBar(context),
-              const SizedBox(height: 16),
-              _buildProfileXpRow(),
-              const SizedBox(height: 16),
-              _streakBannerRow(),
-              const SizedBox(height: 16),
-              _sectionCard(
-                title: 'Streak Overview',
-                child: _statsRow([
-                  _StatItem(Icons.local_fire_department_rounded, AppColorsSP.purple, '67', 'Current Streak'),
-                  _StatItem(Icons.emoji_events_rounded, const Color(0xFF3E9AE8), '92', 'Longest Streak'),
-                  _StatItem(Icons.event_available_rounded, const Color(0xFFE85878), '86%', 'Success Rate'),
-                  _StatItem(Icons.check_circle_rounded, const Color(0xFF4CAF7D), '18', 'Days This Month'),
-                  _StatItem(Icons.star_rounded, const Color(0xFFB48CEA), '6700+', 'Total XP'),
-                ]),
-              ),
-              const SizedBox(height: 16),
-              _sectionCard(
-                title: 'Streak Calendar',
-                child: const MonthlyStreakCalendar(),
-              ),
-              const SizedBox(height: 16),
-              _sectionCard(
-                title: 'Streak Activity',
-                trailing: _viewAllLink(),
-                child: Column(
-                  children: const [
-                    _ActivityTile(
-                      icon: Icons.access_time_filled_rounded,
-                      iconColor: Color(0xFFB0285A),
-                      title: 'Task Completed',
-                      subtitle: 'Design daily UI challenge',
-                      time: 'Aug 05, 2026',
-                      xp: '+50 Xp',
-                    ),
-                    _ActivityTile(
-                      icon: Icons.eco_rounded,
-                      iconColor: Color(0xFF4CAF7D),
-                      title: 'Freeze Used',
-                      subtitle: 'Streak protected',
-                      time: 'Aug 05, 2026',
-                      xp: '0 Xp',
-                    ),
-                    _ActivityTile(
-                      icon: Icons.local_fire_department_rounded,
-                      iconColor: Color(0xFF6C5CE7),
-                      title: 'Streak Milestone',
-                      subtitle: '🔥 10-day streak achieved!',
-                      time: 'Aug 02, 2026',
-                      xp: '+200 Xp',
-                    ),
-                  ],
+        child: _loading
+            ? const Center(child: CircularProgressIndicator(color: AppColorsSP.purple))
+            : RefreshIndicator(
+          onRefresh: _loadStats,
+          color: AppColorsSP.purple,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildTopBar(context),
+                const SizedBox(height: 16),
+                _buildProfileXpRow(_stats!),
+                const SizedBox(height: 16),
+                _streakBannerRow(_stats!),
+                const SizedBox(height: 16),
+                _sectionCard(
+                  title: 'Streak Overview',
+                  child: _statsRow([
+                    _StatItem(Icons.local_fire_department_rounded, AppColorsSP.purple, '${_stats!.currentStreak}', 'Current Streak'),
+                    _StatItem(Icons.emoji_events_rounded, const Color(0xFF3E9AE8), '${_stats!.longestStreak}', 'Longest Streak'),
+                    _StatItem(Icons.event_available_rounded, const Color(0xFFE85878), '${_stats!.successRate.round()}%', 'Success Rate'),
+                    _StatItem(Icons.check_circle_rounded, const Color(0xFF4CAF7D), '${_stats!.daysThisMonth}', 'Days This Month'),
+                    _StatItem(Icons.star_rounded, const Color(0xFFB48CEA), '${_stats!.totalXp}', 'Total XP'),
+                  ]),
                 ),
-              ),
-            ],
+                const SizedBox(height: 16),
+                _sectionCard(
+                  title: 'Streak Calendar',
+                  child: const MonthlyStreakCalendar(),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  // ---------- TOP BAR ----------
   Widget _buildTopBar(BuildContext context) {
     return Row(
       children: [
@@ -100,8 +99,7 @@ class _StreakProgressScreenState extends State<StreakProgressScreen> {
     );
   }
 
-  // ---------- PROFILE + XP ROW ----------
-  Widget _buildProfileXpRow() {
+  Widget _buildProfileXpRow(StreakStats stats) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22)),
@@ -146,12 +144,10 @@ class _StreakProgressScreenState extends State<StreakProgressScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('6700+ Xp', style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w900, color: AppColorsSP.ink)),
+                    Text('${stats.totalXp} Xp', style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w900, color: AppColorsSP.ink)),
                     Text('Total XP', style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w700, color: AppColorsSP.sub)),
                   ],
                 ),
-                const SizedBox(width: 4),
-                const Icon(Icons.chevron_right_rounded, color: AppColorsSP.sub, size: 18),
               ],
             ),
           ),
@@ -160,8 +156,10 @@ class _StreakProgressScreenState extends State<StreakProgressScreen> {
     );
   }
 
-  // ---------- STREAK BANNER + GOAL (side by side cards) ----------
-  Widget _streakBannerRow() {
+  Widget _streakBannerRow(StreakStats stats) {
+    final goalDays = ((stats.currentStreak ~/ 30) + 1) * 30;
+    final daysToGo = goalDays - stats.currentStreak;
+
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -180,10 +178,13 @@ class _StreakProgressScreenState extends State<StreakProgressScreen> {
                     child: const Icon(Icons.local_fire_department_rounded, color: AppColorsSP.purple, size: 24),
                   ),
                   const SizedBox(height: 10),
-                  Text('67', style: GoogleFonts.nunito(fontSize: 26, fontWeight: FontWeight.w900, color: AppColorsSP.ink)),
+                  Text('${stats.currentStreak}', style: GoogleFonts.nunito(fontSize: 26, fontWeight: FontWeight.w900, color: AppColorsSP.ink)),
                   Text('day streak!', style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w800, color: AppColorsSP.ink)),
                   const SizedBox(height: 4),
-                  Text('Keep it going! 🔥', style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: AppColorsSP.sub)),
+                  Text(
+                    stats.currentStreak > 0 ? 'Keep it going! 🔥' : 'Complete a task today to start!',
+                    style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: AppColorsSP.sub),
+                  ),
                 ],
               ),
             ),
@@ -193,7 +194,11 @@ class _StreakProgressScreenState extends State<StreakProgressScreen> {
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22)),
-              child: _goalCard('Reach a 90-day streak', '23 days to go', 67 / 90),
+              child: _goalCard(
+                'Reach a $goalDays-day streak',
+                '$daysToGo days to go',
+                goalDays == 0 ? 0.0 : stats.currentStreak / goalDays,
+              ),
             ),
           ),
         ],
@@ -251,16 +256,6 @@ class _StreakProgressScreenState extends State<StreakProgressScreen> {
     );
   }
 
-  Widget _viewAllLink() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text('View All', style: GoogleFonts.nunito(fontSize: 12.5, fontWeight: FontWeight.w800, color: AppColorsSP.purple)),
-        const Icon(Icons.chevron_right_rounded, color: AppColorsSP.purple, size: 18),
-      ],
-    );
-  }
-
   Widget _statsRow(List<_StatItem> items) {
     return Row(
       children: items.map((s) {
@@ -286,58 +281,6 @@ class _StatItem {
   final String value;
   final String label;
   _StatItem(this.icon, this.color, this.value, this.label);
-}
-
-class _ActivityTile extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String title;
-  final String subtitle;
-  final String time;
-  final String xp;
-
-  const _ActivityTile({
-    required this.icon,
-    required this.iconColor,
-    required this.title,
-    required this.subtitle,
-    required this.time,
-    required this.xp,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(color: iconColor.withOpacity(0.12), shape: BoxShape.circle),
-            child: Icon(icon, color: iconColor, size: 18),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w800, color: AppColorsSP.ink)),
-                Text(subtitle, style: GoogleFonts.nunito(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColorsSP.sub)),
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(xp, style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w800, color: AppColorsSP.purple)),
-              Text(time, style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w700, color: AppColorsSP.sub)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class AppColorsSP {

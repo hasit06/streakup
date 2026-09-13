@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../service/streak_service.dart';
 
 class CalColors {
   static const purple = Color(0xFF6C5CE7);
@@ -9,38 +10,54 @@ class CalColors {
 }
 
 class MonthlyStreakCalendar extends StatefulWidget {
-  final int freezeDay;
-  const MonthlyStreakCalendar({super.key, this.freezeDay = 5});
+  const MonthlyStreakCalendar({super.key});
 
   @override
   State<MonthlyStreakCalendar> createState() => _MonthlyStreakCalendarState();
 }
 
 class _MonthlyStreakCalendarState extends State<MonthlyStreakCalendar> {
+  final _streakService = StreakService();
   final DateTime _today = DateTime.now();
   late DateTime _visibleMonth;
-  late Set<int> _completedDays;
+  Set<int> _completedDays = {};
+  Set<int> _freezeDays = {};
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
     _visibleMonth = DateTime(_today.year, _today.month, 1);
-    _completedDays = _mockCompletedDays(_visibleMonth);
+    _loadMonth();
   }
 
-  Set<int> _mockCompletedDays(DateTime month) {
-    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
-    final upTo = (month.year == _today.year && month.month == _today.month)
-        ? _today.day
-        : daysInMonth;
-    return {for (int d = 1; d <= upTo; d++) d};
+  Future<void> _loadMonth() async {
+    setState(() => _loading = true);
+    try {
+      final completed = await _streakService.fetchCompletedDaysForMonth(_visibleMonth);
+      final freeze = await _streakService.fetchFreezeDaysForMonth(_visibleMonth);
+      if (mounted) {
+        setState(() {
+          _completedDays = completed;
+          _freezeDays = freeze;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load calendar: $e')),
+        );
+      }
+    }
   }
 
   void _changeMonth(int delta) {
     setState(() {
       _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month + delta, 1);
-      _completedDays = _mockCompletedDays(_visibleMonth);
     });
+    _loadMonth();
   }
 
   String _monthName(int month) {
@@ -104,71 +121,75 @@ class _MonthlyStreakCalendarState extends State<MonthlyStreakCalendar> {
               .toList(),
         ),
         const SizedBox(height: 10),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: cells.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 7,
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 4,
-            childAspectRatio: 1,
-          ),
-          itemBuilder: (context, index) {
-            final day = cells[index];
-            if (day == null) return const SizedBox.shrink();
+        if (_loading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: CircularProgressIndicator(color: CalColors.purple),
+          )
+        else
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: cells.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 4,
+              childAspectRatio: 1,
+            ),
+            itemBuilder: (context, index) {
+              final day = cells[index];
+              if (day == null) return const SizedBox.shrink();
 
-            final isToday = _visibleMonth.year == _today.year &&
-                _visibleMonth.month == _today.month &&
-                day == _today.day;
-            final isCompleted = _completedDays.contains(day);
-            final isFreeze = day == widget.freezeDay &&
-                _visibleMonth.year == _today.year &&
-                _visibleMonth.month == _today.month;
+              final isToday = _visibleMonth.year == _today.year &&
+                  _visibleMonth.month == _today.month &&
+                  day == _today.day;
+              final isCompleted = _completedDays.contains(day);
+              final isFreeze = _freezeDays.contains(day);
 
-            Color bg;
-            Color textColor;
-            if (isToday) {
-              bg = CalColors.purple;
-              textColor = Colors.white;
-            } else if (isCompleted) {
-              bg = CalColors.lightPurple;
-              textColor = CalColors.purple;
-            } else {
-              bg = Colors.transparent;
-              textColor = CalColors.ink;
-            }
+              Color bg;
+              Color textColor;
+              if (isToday) {
+                bg = CalColors.purple;
+                textColor = Colors.white;
+              } else if (isCompleted) {
+                bg = CalColors.lightPurple;
+                textColor = CalColors.purple;
+              } else {
+                bg = Colors.transparent;
+                textColor = CalColors.ink;
+              }
 
-            return Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 2),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: bg,
-                    shape: isToday ? BoxShape.circle : BoxShape.rectangle,
-                    borderRadius: isToday ? null : BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '$day',
-                    style: GoogleFonts.nunito(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w800,
-                      color: textColor,
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: bg,
+                      shape: isToday ? BoxShape.circle : BoxShape.rectangle,
+                      borderRadius: isToday ? null : BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '$day',
+                      style: GoogleFonts.nunito(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                        color: textColor,
+                      ),
                     ),
                   ),
-                ),
-                if (isFreeze)
-                  const Positioned(
-                    top: -3,
-                    right: -1,
-                    child: Icon(Icons.eco_rounded, size: 13, color: Color(0xFF4CAF7D)),
-                  ),
-              ],
-            );
-          },
-        ),
+                  if (isFreeze)
+                    const Positioned(
+                      top: -3,
+                      right: -1,
+                      child: Icon(Icons.eco_rounded, size: 13, color: Color(0xFF4CAF7D)),
+                    ),
+                ],
+              );
+            },
+          ),
         const SizedBox(height: 14),
         Row(
           children: [

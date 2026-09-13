@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../shared_widgets.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class JournalScreenContent extends StatefulWidget {
   const JournalScreenContent({super.key});
@@ -10,7 +11,38 @@ class JournalScreenContent extends StatefulWidget {
 
 class _JournalScreenContentState extends State<JournalScreenContent> {
   final _entry = TextEditingController();
+  final _supabase = Supabase.instance.client;
+  String? _selectedMood; // wire this to whatever mood picker UI you add later; null is fine for now
 
+  Future<void> _saveJournal() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+    final today = DateTime.now();
+    final todayStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+
+    try {
+      await _supabase.from('journal_entries').upsert(
+        {
+          'user_id': userId,
+          'day': todayStr,
+          'entry_text': _entry.text.trim(),
+          'mood': _selectedMood,
+        },
+        onConflict: 'user_id,day',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Journal saved!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save: $e')),
+        );
+      }
+    }
+  }
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -86,7 +118,7 @@ class _JournalScreenContentState extends State<JournalScreenContent> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () {},
+                      onPressed: _saveJournal,
                       style: OutlinedButton.styleFrom(
                         side: BorderSide(color: AppColors.purple.withOpacity(0.3)),
                         backgroundColor: const Color(0xFFF6F2FF),
