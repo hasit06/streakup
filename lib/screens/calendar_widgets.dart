@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 class CalColors {
   static const purple = Color(0xFF6C5CE7);
+  static const lightPurple = Color(0xFFDCD6FA);
   static const ink = Color(0xFF1E1C3B);
   static const sub = Color(0xFF8B8C9E);
 }
@@ -52,7 +53,7 @@ class _MonthlyStreakCalendarState extends State<MonthlyStreakCalendar> {
 
   @override
   Widget build(BuildContext context) {
-    const weekdayLabels = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+    const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     final daysInMonth = DateTime(_visibleMonth.year, _visibleMonth.month + 1, 0).day;
     final firstWeekday = DateTime(_visibleMonth.year, _visibleMonth.month, 1).weekday % 7;
 
@@ -71,7 +72,7 @@ class _MonthlyStreakCalendarState extends State<MonthlyStreakCalendar> {
               child: const Icon(Icons.chevron_left_rounded, color: CalColors.sub),
             ),
             Text('${_monthName(_visibleMonth.month)} ${_visibleMonth.year}',
-                style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w900, color: CalColors.ink)),
+                style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w900, color: CalColors.ink)),
             GestureDetector(
               onTap: () => _changeMonth(1),
               child: const Icon(Icons.chevron_right_rounded, color: CalColors.sub),
@@ -92,7 +93,7 @@ class _MonthlyStreakCalendarState extends State<MonthlyStreakCalendar> {
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         Row(
           children: weekdayLabels
               .map((d) => Expanded(
@@ -102,14 +103,14 @@ class _MonthlyStreakCalendarState extends State<MonthlyStreakCalendar> {
           ))
               .toList(),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 10),
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: cells.length,
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 7,
-            mainAxisSpacing: 6,
+            mainAxisSpacing: 8,
             crossAxisSpacing: 4,
             childAspectRatio: 1,
           ),
@@ -125,39 +126,53 @@ class _MonthlyStreakCalendarState extends State<MonthlyStreakCalendar> {
                 _visibleMonth.year == _today.year &&
                 _visibleMonth.month == _today.month;
 
+            Color bg;
+            Color textColor;
+            if (isToday) {
+              bg = CalColors.purple;
+              textColor = Colors.white;
+            } else if (isCompleted) {
+              bg = CalColors.lightPurple;
+              textColor = CalColors.purple;
+            } else {
+              bg = Colors.transparent;
+              textColor = CalColors.ink;
+            }
+
             return Stack(
               clipBehavior: Clip.none,
               children: [
                 Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 2),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: isCompleted ? CalColors.purple : Colors.transparent,
-                    shape: BoxShape.circle,
-                    border: isToday && !isCompleted ? Border.all(color: CalColors.purple, width: 2) : null,
+                    color: bg,
+                    shape: isToday ? BoxShape.circle : BoxShape.rectangle,
+                    borderRadius: isToday ? null : BorderRadius.circular(10),
                   ),
                   child: Text(
                     '$day',
                     style: GoogleFonts.nunito(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w800,
-                      color: isCompleted ? Colors.white : (isToday ? CalColors.purple : CalColors.ink),
+                      color: textColor,
                     ),
                   ),
                 ),
                 if (isFreeze)
                   const Positioned(
-                    top: -2,
-                    right: -2,
+                    top: -3,
+                    right: -1,
                     child: Icon(Icons.eco_rounded, size: 13, color: Color(0xFF4CAF7D)),
                   ),
               ],
             );
           },
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 14),
         Row(
           children: [
-            Container(width: 10, height: 10, decoration: BoxDecoration(color: CalColors.purple, borderRadius: BorderRadius.circular(3))),
+            Container(width: 10, height: 10, decoration: const BoxDecoration(color: CalColors.purple, shape: BoxShape.circle)),
             const SizedBox(width: 6),
             Text('Completed', style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w700, color: CalColors.sub)),
             const SizedBox(width: 16),

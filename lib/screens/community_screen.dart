@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../shared_widgets.dart';
+import "leaderboard.dart";
 
 class CommunityScreenContent extends StatefulWidget {
   const CommunityScreenContent({super.key});
@@ -19,10 +20,34 @@ class _CommunityScreenContentState extends State<CommunityScreenContent> {
   ];
 
   final _groups = const [
-    {'name': 'Study Warriors', 'icon': Icons.groups_rounded, 'color': AppColors.purple, 'streak': 42, 'members': 18},
-    {'name': 'Coding Ninjas', 'icon': Icons.security_rounded, 'color': AppColors.purple, 'streak': 17, 'members': 12},
+    {
+      'name': 'Study Warriors',
+      'tagline': 'Study together. Grow together. 💜',
+      'icon': Icons.groups_rounded,
+      'color': AppColors.purple,
+      'streak': 42,
+      'members': 18,
+      'leaderboard': [
+        GroupMember(name: 'Hasit', xp: 6700, isYou: true),
+        GroupMember(name: 'Aarav', xp: 5230),
+        GroupMember(name: 'Priya', xp: 4180),
+        GroupMember(name: 'Karan', xp: 3650),
+      ],
+    },
+    {
+      'name': 'Coding Ninjas',
+      'tagline': 'Code daily. Level up together. 💻',
+      'icon': Icons.security_rounded,
+      'color': AppColors.purple,
+      'streak': 17,
+      'members': 12,
+      'leaderboard': [
+        GroupMember(name: 'Hasit', xp: 6700, isYou: true),
+        GroupMember(name: 'Diya', xp: 4890),
+        GroupMember(name: 'Rohan', xp: 3200),
+      ],
+    },
   ];
-
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -115,37 +140,52 @@ class _CommunityScreenContentState extends State<CommunityScreenContent> {
 
   List<Widget> _buildGroups() {
     return [
-      ..._groups.map((g) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(color: const Color(0xFFEDEBFB), borderRadius: BorderRadius.circular(14)),
-              child: Icon(g['icon'] as IconData, color: AppColors.purple, size: 22),
+      ..._groups.map((g) => GestureDetector(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => GroupDetailScreen(
+              groupName: g['name'] as String,
+              tagline: g['tagline'] as String,
+              icon: g['icon'] as IconData,
+              streak: g['streak'] as int,
+              memberCount: g['members'] as int,
+              members: g['leaderboard'] as List<GroupMember>,
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(g['name'] as String, style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.ink)),
-                  const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      const Icon(Icons.local_fire_department_rounded, size: 14, color: AppColors.orange),
-                      Text(' ${g['streak']} day streak', style: GoogleFonts.nunito(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.purple)),
-                      Text('   |   ', style: GoogleFonts.nunito(fontSize: 11, color: AppColors.sub)),
-                      const Icon(Icons.people_alt_rounded, size: 13, color: AppColors.purple),
-                      Text(' ${g['members']} Members', style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.sub)),
-                    ],
-                  ),
-                ],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(color: const Color(0xFFEDEBFB), borderRadius: BorderRadius.circular(14)),
+                child: Icon(g['icon'] as IconData, color: AppColors.purple, size: 22),
               ),
-            ),
-            const Icon(Icons.chevron_right_rounded, color: AppColors.purple),
-          ],
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(g['name'] as String, style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.ink)),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        const Icon(Icons.local_fire_department_rounded, size: 14, color: AppColors.orange),
+                        Text(' ${g['streak']} day streak', style: GoogleFonts.nunito(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.purple)),
+                        Text('   |   ', style: GoogleFonts.nunito(fontSize: 11, color: AppColors.sub)),
+                        const Icon(Icons.people_alt_rounded, size: 13, color: AppColors.purple),
+                        Text(' ${g['members']} Members', style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.sub)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: AppColors.purple),
+            ],
+          ),
         ),
       )),
       const SizedBox(height: 10),
@@ -154,7 +194,6 @@ class _CommunityScreenContentState extends State<CommunityScreenContent> {
       _actionCard(Icons.link_rounded, 'Join via code', 'Enter a code to join an existing group'),
     ];
   }
-
   Widget _actionCard(IconData icon, String title, String sub) {
     return Container(
       padding: const EdgeInsets.all(12),

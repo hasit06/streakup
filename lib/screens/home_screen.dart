@@ -4,6 +4,7 @@ import '../theme/app_theme.dart';
 import 'streak_progress_screen.dart';
 import 'ProfileScreen.dart';
 import 'notifications_screen.dart';
+import 'profile_detail_screen.dart';
 
 class FlameLogo extends StatelessWidget {
   final double size;
@@ -33,7 +34,7 @@ class FlameLogo extends StatelessWidget {
 }
 
 class HomeScreen extends StatelessWidget {
-  final ValueChanged<int> onNavigateToTab; // NEW — 1 = Tasks tab, 2 = Journal tab
+  final ValueChanged<int> onNavigateToTab;
 
   const HomeScreen({super.key, required this.onNavigateToTab});
 
@@ -56,8 +57,6 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // NOTE: no Scaffold here anymore — MainWrapper's GradientScaffold owns
-    // the endDrawer/background/bottom nav for every tab now.
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Column(
@@ -82,14 +81,12 @@ class HomeScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // Tapping this now switches to the Journal tab (index 2)
           GestureDetector(
             onTap: () => onNavigateToTab(2),
             child: _buildTodayProgressCard(),
           ),
           const SizedBox(height: 16),
 
-          // Tapping this now switches to the Tasks tab (index 1)
           GestureDetector(
             onTap: () => onNavigateToTab(1),
             child: _buildUpcomingTaskCard(),
@@ -107,17 +104,22 @@ class HomeScreen extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Container(
-          height: 44,
-          width: 44,
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2)),
-            ],
+        Builder(
+          builder: (innerContext) => GestureDetector(
+            onTap: () => Scaffold.of(innerContext).openEndDrawer(),
+            child: Container(
+              height: 44,
+              width: 44,
+              decoration: BoxDecoration(
+                color: AppColors.white,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2)),
+                ],
+              ),
+              child: const Icon(Icons.menu_rounded, color: AppColors.ink),
+            ),
           ),
-          child: const Icon(Icons.menu_rounded, color: AppColors.ink),
         ),
         Row(
           children: [
@@ -129,17 +131,17 @@ class HomeScreen extends StatelessWidget {
               child: const Icon(Icons.notifications_none_rounded, color: AppColors.ink, size: 28),
             ),
             const SizedBox(width: 12),
-            // Builder finds MainWrapper's Scaffold now (the only one in the tree)
-            Builder(
-              builder: (innerContext) => GestureDetector(
-                onTap: () => Scaffold.of(innerContext).openEndDrawer(),
-                onLongPress: () => _logout(innerContext),
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: const BoxDecoration(shape: BoxShape.circle, color: AppColors.lightPurple),
-                  child: const Icon(Icons.person_rounded, color: AppColors.purple),
-                ),
+            GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ProfileDetailScreen()),
+              ),
+              onLongPress: () => _logout(context),
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: const BoxDecoration(shape: BoxShape.circle, color: AppColors.lightPurple),
+                child: const Icon(Icons.person_rounded, color: AppColors.purple),
               ),
             ),
           ],

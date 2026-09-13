@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'main.dart'; // <-- ADJUST: path to wherever main.dart lives relative to this file
 import 'screens/main_wrapper.dart'; // <-- ADJUST: path to wherever MainWrapper lives
 import 'screens/notifications_screen.dart'; // adjust path if your screens folder is elsewhere
+import 'screens/profile_detail_screen.dart';
 
 void showAddOptionsSheet(
     BuildContext context, {
@@ -206,13 +207,14 @@ class GradientScaffold extends StatelessWidget {
       bottomNavigationBar: bottomNavigationBar,
       endDrawer: endDrawer,
       body: Container(
+        width: double.infinity,
+        height: double.infinity,
         decoration: const BoxDecoration(gradient: AppGradient.bg),
         child: SafeArea(child: child),
       ),
     );
   }
 }
-
 class AppTopBar extends StatelessWidget {
   final VoidCallback? onBack;
   const AppTopBar({super.key, this.onBack});
@@ -228,27 +230,24 @@ class AppTopBar extends StatelessWidget {
             _circleBtn(
               icon: Icons.notifications_none_rounded,
               badge: true,
-              onTap: () {
-                print('bell tapped'); // TEMP
-                navigatorKey.currentState?.push(
-                  MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-                );
-              },
+              onTap: () => navigatorKey.currentState?.push(
+                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+              ),
             ),
             const SizedBox(width: 10),
-            Builder(
-              builder: (innerContext) => GestureDetector(
-                onTap: () => Scaffold.of(innerContext).openEndDrawer(),
-                child: ClipOval(
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    color: Colors.white,
-                    child: Image.asset(
-                      'assets/avatar.png',
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Icon(Icons.person_rounded, color: AppColors.purple, size: 26),
-                    ),
+            GestureDetector(
+              onTap: () => navigatorKey.currentState?.push(
+                MaterialPageRoute(builder: (_) => const ProfileDetailScreen()),
+              ),
+              child: ClipOval(
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  color: Colors.white,
+                  child: Image.asset(
+                    'assets/avatar.png',
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const Icon(Icons.person_rounded, color: AppColors.purple, size: 26),
                   ),
                 ),
               ),

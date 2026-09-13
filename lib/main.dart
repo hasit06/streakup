@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/auth_gate.dart';
+import 'package:flutter/services.dart';
 
 final navigatorKey = GlobalKey<NavigatorState>();
 
@@ -10,6 +11,15 @@ Future<void> main() async {
     url: 'https://dcuakwjmjzmnxktynzkz.supabase.co',
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRjdWFrd2ptanptbnhrdHluemt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1OTU4MTIsImV4cCI6MjEwMzE3MTgxMn0.2ofpBfCIylxpyguic1Z-OSnu-D9bFuchh3F_v_mgNoQ',
   );
+
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarContrastEnforced: false, // <-- key fix for Android 15
+      systemNavigationBarIconBrightness: Brightness.dark,
+    ),
+  );
+
   runApp(const MyApp());
 }
 
@@ -23,7 +33,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
-      title: 'Habit Tracker',
+      title: 'StreakUp',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF6C5DD3)),
         scaffoldBackgroundColor: Colors.transparent,

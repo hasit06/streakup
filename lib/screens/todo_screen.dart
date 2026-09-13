@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'streak_progress_screen.dart';
 import 'calendar_screen.dart';
 import 'notifications_screen.dart';
+import 'profile_detail_screen.dart';
 
 class _Task {
   String title;
@@ -173,7 +174,10 @@ class _TodoScreenState extends State<TodoScreen> {
             const SizedBox(width: 14),
             Builder(
               builder: (innerContext) => GestureDetector(
-                onTap: () => Scaffold.of(innerContext).openEndDrawer(),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ProfileDetailScreen()),
+                ),
                 child: Container(
                   width: 44,
                   height: 44,
