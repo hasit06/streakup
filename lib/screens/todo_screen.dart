@@ -50,21 +50,28 @@ enum _Filter { all, pending, completed }
 
 class _TodoScreenState extends State<TodoScreen> {
   final _supabase = Supabase.instance.client;
+  final _streakService = StreakService();
   List<_Task> _tasks = [];
+  StreakStats? _stats;
   bool _loading = true;
   _Filter _filter = _Filter.all;
 
   @override
   void initState() {
     super.initState();
-    _fetchTasks();
+    _fetchAll();
+  }
+
+  Future<void> _fetchAll() async {
+    setState(() => _loading = true);
+    await Future.wait([_fetchTasks(), _fetchStats()]);
+    if (mounted) setState(() => _loading = false);
   }
 
   Future<void> _fetchTasks() async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) return;
 
-    setState(() => _loading = true);
     try {
       final response = await _supabase
           .from('tasks')
@@ -72,17 +79,26 @@ class _TodoScreenState extends State<TodoScreen> {
           .eq('user_id', userId)
           .order('created_at', ascending: false);
 
-      setState(() {
-        _tasks = (response as List).map((row) => _Task.fromMap(row)).toList();
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _tasks = (response as List).map((row) => _Task.fromMap(row)).toList();
+        });
+      }
     } catch (e) {
-      setState(() => _loading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to load tasks: $e')),
         );
       }
+    }
+  }
+
+  Future<void> _fetchStats() async {
+    try {
+      final stats = await _streakService.fetchStats();
+      if (mounted) setState(() => _stats = stats);
+    } catch (e) {
+      // Non-fatal — info card just falls back to placeholders if this fails
     }
   }
 
@@ -123,7 +139,7 @@ class _TodoScreenState extends State<TodoScreen> {
     if (title == null || title.isEmpty || !mounted) return;
 
     final repeatResult = await _showRepeatDialog();
-    if (repeatResult == null) return; // user backed out
+    if (repeatResult == null) return;
 
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) return;
@@ -153,7 +169,6 @@ class _TodoScreenState extends State<TodoScreen> {
     }
   }
 
-  // Returns null if user cancelled, otherwise a _RepeatChoice
   Future<_RepeatChoice?> _showRepeatDialog() async {
     bool repeats = false;
     final selectedDays = <int>{};
@@ -192,7 +207,7 @@ class _TodoScreenState extends State<TodoScreen> {
                   spacing: 8,
                   runSpacing: 8,
                   children: List.generate(7, (i) {
-                    final dayNum = i + 1; // 1=Mon ... 7=Sun
+                    final dayNum = i + 1;
                     final selected = selectedDays.contains(dayNum);
                     return FilterChip(
                       label: Text(dayLabels[i]),
@@ -266,12 +281,12 @@ class _TodoScreenState extends State<TodoScreen> {
     if (newTitle == null || newTitle.isEmpty || newTitle == task.title || !mounted) return;
 
     final oldTitle = task.title;
-    setState(() => task.title = newTitle); // optimistic
+    setState(() => task.title = newTitle);
 
     try {
       await _supabase.from('tasks').update({'title': newTitle}).eq('id', task.id);
     } catch (e) {
-      setState(() => task.title = oldTitle); // revert
+      setState(() => task.title = oldTitle);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to update task: $e')),
@@ -285,10 +300,8 @@ class _TodoScreenState extends State<TodoScreen> {
     setState(() => task.completed = newValue);
 
     try {
-      await _supabase.from('tasks').update({'completed': newValue}).eq('id', task.id);
-      if (newValue) {
-        await StreakService().markTodayCompleted(); // NEW
-      }
+      await _streakService.toggleTaskCompletion(task.id, newValue);
+      await _fetchStats(); // refresh streak/XP shown on this screen too
     } catch (e) {
       setState(() => task.completed = !newValue);
       if (mounted) {
@@ -301,12 +314,12 @@ class _TodoScreenState extends State<TodoScreen> {
 
   Future<void> _deleteTask(_Task task) async {
     final removedIndex = _tasks.indexOf(task);
-    setState(() => _tasks.remove(task)); // optimistic
+    setState(() => _tasks.remove(task));
 
     try {
       await _supabase.from('tasks').delete().eq('id', task.id);
     } catch (e) {
-      setState(() => _tasks.insert(removedIndex, task)); // revert
+      setState(() => _tasks.insert(removedIndex, task));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to delete task: $e')),
@@ -351,7 +364,7 @@ class _TodoScreenState extends State<TodoScreen> {
     }
 
     return RefreshIndicator(
-      onRefresh: _fetchTasks,
+      onRefresh: _fetchAll,
       color: const Color(0xFF6C5CE7),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -436,6 +449,9 @@ class _TodoScreenState extends State<TodoScreen> {
   }
 
   Widget _buildInfoCards(DateTime now) {
+    final streakValue = _stats != null ? '${_stats!.currentStreak}' : '—';
+    final xpValue = _stats != null ? '${_stats!.totalXp}+ Xp' : '— Xp';
+
     return Row(
       children: [
         Expanded(
@@ -454,14 +470,17 @@ class _TodoScreenState extends State<TodoScreen> {
         const SizedBox(width: 12),
         Expanded(
           child: GestureDetector(
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StreakProgressScreen())),
+            onTap: () async {
+              await Navigator.push(context, MaterialPageRoute(builder: (_) => const StreakProgressScreen()));
+              _fetchStats(); // refresh in case streak/XP changed while on that screen
+            },
             child: _infoCard(
               icon: Icons.local_fire_department_rounded,
               iconBg: const Color(0xFFFFF0EC),
               iconColor: const Color(0xFFFF7A45),
-              topLine: '67',
+              topLine: streakValue,
               topLineSuffix: 'day streak',
-              subLine: '6700+ Xp',
+              subLine: xpValue,
               actionLabel: 'See progress',
             ),
           ),

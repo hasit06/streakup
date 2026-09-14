@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../shared_widgets.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../service/journal_service.dart';
+import 'journal_entries.dart';
 
 class JournalScreenContent extends StatefulWidget {
   const JournalScreenContent({super.key});
@@ -11,29 +12,83 @@ class JournalScreenContent extends StatefulWidget {
 
 class _JournalScreenContentState extends State<JournalScreenContent> {
   final _entry = TextEditingController();
-  final _supabase = Supabase.instance.client;
-  String? _selectedMood; // wire this to whatever mood picker UI you add later; null is fine for now
+  final _service = JournalService();
+  String? _selectedMood;
+  DateTime _selectedDate = DateTime.now();
+  JournalEntry? _currentEntry;
+  JournalEntry? _latestPastEntry;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadForDate(_selectedDate);
+    _loadInsights();
+  }
+
+  Future<void> _loadForDate(DateTime date) async {
+    setState(() => _loading = true);
+    try {
+      final entry = await _service.fetchEntryForDay(date);
+      if (mounted) {
+        setState(() {
+          _currentEntry = entry;
+          _entry.text = entry?.entryText ?? '';
+          _selectedMood = entry?.mood;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load entry: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadInsights() async {
+    try {
+      final entry = await _service.fetchLatestEntryBefore(DateTime.now());
+      if (mounted) setState(() => _latestPastEntry = entry);
+    } catch (e) {
+      // non-fatal
+    }
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(primary: AppColors.purple),
+        ),
+        child: child!,
+      ),
+    );
+
+    if (picked == null) return;
+    setState(() => _selectedDate = picked);
+    _loadForDate(picked);
+  }
 
   Future<void> _saveJournal() async {
-    final userId = _supabase.auth.currentUser?.id;
-    if (userId == null) return;
-    final today = DateTime.now();
-    final todayStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-
     try {
-      await _supabase.from('journal_entries').upsert(
-        {
-          'user_id': userId,
-          'day': todayStr,
-          'entry_text': _entry.text.trim(),
-          'mood': _selectedMood,
-        },
-        onConflict: 'user_id,day',
+      final saved = await _service.saveEntry(
+        day: _selectedDate,
+        text: _entry.text.trim(),
+        mood: _selectedMood,
       );
       if (mounted) {
+        setState(() => _currentEntry = saved);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Journal saved!')),
         );
+        _loadInsights(); // refresh insights in case today became "yesterday's" reference point elsewhere
       }
     } catch (e) {
       if (mounted) {
@@ -43,8 +98,41 @@ class _JournalScreenContentState extends State<JournalScreenContent> {
       }
     }
   }
+
+  String _formatDate(DateTime d) {
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '${d.day} ${months[d.month - 1]}, ${d.year}';
+  }
+
+  void _openInsightsMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.menu_book_rounded, color: AppColors.purple),
+              title: Text('View All Entries', style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
+              onTap: () {
+                Navigator.pop(ctx);
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const JournalEntriesScreen()));
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isToday = _selectedDate.year == DateTime.now().year &&
+        _selectedDate.month == DateTime.now().month &&
+        _selectedDate.day == DateTime.now().day;
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
       children: [
@@ -64,41 +152,53 @@ class _JournalScreenContentState extends State<JournalScreenContent> {
                     children: [
                       const Icon(Icons.calendar_today_outlined, size: 18, color: AppColors.purple),
                       const SizedBox(width: 10),
-                      Text('13th Aug, 2026', style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.ink)),
+                      Text(
+                        isToday ? '${_formatDate(_selectedDate)} (Today)' : _formatDate(_selectedDate),
+                        style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.ink),
+                      ),
                     ],
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(color: const Color(0xFFEDEBFB), borderRadius: BorderRadius.circular(12)),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.calendar_month_rounded, size: 14, color: AppColors.purple),
-                        const SizedBox(width: 4),
-                        Text('View Calendar', style: GoogleFonts.nunito(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.purple)),
-                      ],
+                  GestureDetector(
+                    onTap: _pickDate,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(color: const Color(0xFFEDEBFB), borderRadius: BorderRadius.circular(12)),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.calendar_month_rounded, size: 14, color: AppColors.purple),
+                          const SizedBox(width: 4),
+                          Text('View Calendar', style: GoogleFonts.nunito(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.purple)),
+                        ],
+                      ),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
-              Container(
-                height: 120,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.cardBorder),
-                ),
-                child: TextField(
-                  controller: _entry,
-                  maxLines: null,
-                  style: GoogleFonts.nunito(fontSize: 14, color: AppColors.ink),
-                  decoration: InputDecoration(
-                    hintText: 'How was your day?',
-                    hintStyle: GoogleFonts.nunito(color: AppColors.sub),
-                    border: InputBorder.none,
+              if (_loading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 30),
+                  child: CircularProgressIndicator(color: AppColors.purple),
+                )
+              else
+                Container(
+                  height: 120,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.cardBorder),
+                  ),
+                  child: TextField(
+                    controller: _entry,
+                    maxLines: null,
+                    style: GoogleFonts.nunito(fontSize: 14, color: AppColors.ink),
+                    decoration: InputDecoration(
+                      hintText: 'How was your day?',
+                      hintStyle: GoogleFonts.nunito(color: AppColors.sub),
+                      border: InputBorder.none,
+                    ),
                   ),
                 ),
-              ),
               const SizedBox(height: 14),
               Row(
                 children: [
@@ -151,7 +251,10 @@ class _JournalScreenContentState extends State<JournalScreenContent> {
                       Text("Yesterday's Insights", style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.ink)),
                     ],
                   ),
-                  const Icon(Icons.more_horiz_rounded, color: AppColors.purple),
+                  GestureDetector(
+                    onTap: _openInsightsMenu,
+                    child: const Icon(Icons.more_horiz_rounded, color: AppColors.purple),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -169,7 +272,14 @@ class _JournalScreenContentState extends State<JournalScreenContent> {
                         children: [
                           Text('Latest entry', style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.ink)),
                           const SizedBox(height: 4),
-                          Text('Felt productive today! Completed my tasks and learned something new.', style: GoogleFonts.nunito(fontSize: 11.5, color: AppColors.sub, fontWeight: FontWeight.w600)),
+                          Text(
+                            _latestPastEntry == null
+                                ? 'No past entries yet — write your first one above!'
+                                : _latestPastEntry!.entryText.isEmpty
+                                ? '(empty entry)'
+                                : _latestPastEntry!.entryText,
+                            style: GoogleFonts.nunito(fontSize: 11.5, color: AppColors.sub, fontWeight: FontWeight.w600),
+                          ),
                         ],
                       ),
                     ),

@@ -122,7 +122,7 @@ class _StreakProgressScreenState extends State<StreakProgressScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Hasit', style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w900, color: AppColorsSP.ink)),
+                Text(stats.fullName, style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w900, color: AppColorsSP.ink)),
                 Text(
                   'Small steps. Big progress. 💜',
                   style: GoogleFonts.nunito(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColorsSP.sub),

@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../shared_widgets.dart';
-import "leaderboard.dart";
+import '../service/friend_service.dart';
+import 'friends_profile_screen.dart';
+import 'add_friend_screen.dart';
+import 'friend_request_screen.dart';
+import 'leaderboard.dart';
 
 class CommunityScreenContent extends StatefulWidget {
   const CommunityScreenContent({super.key});
@@ -12,12 +16,12 @@ class CommunityScreenContent extends StatefulWidget {
 
 class _CommunityScreenContentState extends State<CommunityScreenContent> {
   bool _groupsTab = false;
+  final _friendService = FriendService();
+  List<Friend> _friends = [];
+  bool _loading = true;
 
-  final _friends = const [
-    {'name': 'Druov', 'streak': 42, 'mutual': 18},
-    {'name': 'Miten', 'streak': 29, 'mutual': 12},
-    {'name': 'Viraj', 'streak': 15, 'mutual': 9},
-  ];
+  bool _selectMode = false;
+  final Set<String> _selectedIds = {};
 
   final _groups = const [
     {
@@ -48,6 +52,86 @@ class _CommunityScreenContentState extends State<CommunityScreenContent> {
       ],
     },
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFriends();
+  }
+
+  Future<void> _loadFriends() async {
+    setState(() => _loading = true);
+    try {
+      final friends = await _friendService.fetchFriends();
+      if (mounted) setState(() { _friends = friends; _loading = false; });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load friends: $e')),
+        );
+      }
+    }
+  }
+
+  void _toggleSelectMode() {
+    setState(() {
+      _selectMode = !_selectMode;
+      _selectedIds.clear();
+    });
+  }
+
+  void _toggleSelectAll() {
+    setState(() {
+      if (_selectedIds.length == _friends.length) {
+        _selectedIds.clear();
+      } else {
+        _selectedIds
+          ..clear()
+          ..addAll(_friends.map((f) => f.id));
+      }
+    });
+  }
+
+  Future<void> _removeSelected() async {
+    if (_selectedIds.isEmpty) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text('Remove friends?'),
+        content: Text('Remove ${_selectedIds.length} friend(s)? This can\'t be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    final idsToRemove = _selectedIds.toList();
+    final removedFriends = _friends.where((f) => idsToRemove.contains(f.id)).toList();
+
+    setState(() {
+      _friends.removeWhere((f) => idsToRemove.contains(f.id));
+      _selectMode = false;
+      _selectedIds.clear();
+    });
+
+    try {
+      await _friendService.removeFriends(idsToRemove);
+    } catch (e) {
+      setState(() => _friends.addAll(removedFriends));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to remove: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -59,23 +143,99 @@ class _CommunityScreenContentState extends State<CommunityScreenContent> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text('Community', style: GoogleFonts.schoolbell(fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.ink)),
-            Container(
-              width: 36,
-              height: 36,
-              decoration: softCard(radius: 12),
-              child: Icon(_groupsTab ? Icons.search_rounded : Icons.add_rounded, size: 20, color: AppColors.purple),
+            Row(
+              children: [
+                if (!_groupsTab) ...[
+                  GestureDetector(
+                    onTap: () async {
+                      await Navigator.push(context, MaterialPageRoute(builder: (_) => const FriendRequestsScreen()));
+                      _loadFriends();
+                    },
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: softCard(radius: 12),
+                      child: const Icon(Icons.mail_outline_rounded, size: 18, color: AppColors.purple),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: _toggleSelectMode,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: softCard(radius: 12),
+                      child: Text(
+                        _selectMode ? 'Cancel' : 'Select',
+                        style: GoogleFonts.nunito(fontSize: 12.5, fontWeight: FontWeight.w800, color: AppColors.purple),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () async {
+                      await Navigator.push(context, MaterialPageRoute(builder: (_) => const AddFriendScreen()));
+                      _loadFriends();
+                    },
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: softCard(radius: 12),
+                      child: const Icon(Icons.person_add_alt_1_rounded, size: 18, color: AppColors.purple),
+                    ),
+                  ),
+                ] else
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: softCard(radius: 12),
+                    child: const Icon(Icons.add_rounded, size: 20, color: AppColors.purple),
+                  ),
+              ],
             ),
           ],
         ),
         const SizedBox(height: 14),
         Row(
           children: [
-            _tabBtn('Groups', _groupsTab, () => setState(() => _groupsTab = true)),
+            _tabBtn('Groups', _groupsTab, () => setState(() { _groupsTab = true; _selectMode = false; _selectedIds.clear(); })),
             const SizedBox(width: 24),
             _tabBtn('Friends', !_groupsTab, () => setState(() => _groupsTab = false)),
           ],
         ),
         const SizedBox(height: 16),
+        if (_selectMode) ...[
+          Row(
+            children: [
+              GestureDetector(
+                onTap: _toggleSelectAll,
+                child: Row(
+                  children: [
+                    Icon(
+                      _selectedIds.length == _friends.length && _friends.isNotEmpty
+                          ? Icons.check_box_rounded
+                          : Icons.check_box_outline_blank_rounded,
+                      color: AppColors.purple,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text('Select all', style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink)),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              if (_selectedIds.isNotEmpty)
+                GestureDetector(
+                  onTap: _removeSelected,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(color: const Color(0xFFFFE5E5), borderRadius: BorderRadius.circular(14)),
+                    child: Text('Remove (${_selectedIds.length})', style: GoogleFonts.nunito(fontSize: 12.5, fontWeight: FontWeight.w800, color: Colors.red)),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+        ],
         Container(
           padding: const EdgeInsets.all(16),
           decoration: softCard(),
@@ -86,6 +246,7 @@ class _CommunityScreenContentState extends State<CommunityScreenContent> {
       ],
     );
   }
+
 
   Widget _tabBtn(String label, bool active, VoidCallback onTap) {
     return GestureDetector(
@@ -102,37 +263,56 @@ class _CommunityScreenContentState extends State<CommunityScreenContent> {
   }
 
   List<Widget> _buildFriends() {
+    if (_loading) {
+      return [const Padding(padding: EdgeInsets.symmetric(vertical: 30), child: Center(child: CircularProgressIndicator(color: AppColors.purple)))];
+    }
+    if (_friends.isEmpty) {
+      return [Padding(padding: const EdgeInsets.symmetric(vertical: 30), child: Center(child: Text('No friends yet', style: GoogleFonts.nunito(color: AppColors.sub, fontWeight: FontWeight.w700))))];
+    }
+
     return _friends.map((f) {
+      final selected = _selectedIds.contains(f.id);
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Row(
-          children: [
-            const CircleAvatar(
-              radius: 22,
-              backgroundColor: Color(0xFFEDEBFB),
-              child: Icon(Icons.person_rounded, color: AppColors.purple),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(f['name'] as String, style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.ink)),
-                  const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      const Icon(Icons.local_fire_department_rounded, size: 14, color: AppColors.orange),
-                      Text(' ${f['streak']} day streak', style: GoogleFonts.nunito(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.purple)),
-                      Text('   |   ', style: GoogleFonts.nunito(fontSize: 11, color: AppColors.sub)),
-                      const Icon(Icons.people_alt_rounded, size: 13, color: AppColors.purple),
-                      Text(' ${f['mutual']} Mutual Friends', style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.sub)),
-                    ],
-                  ),
-                ],
+        child: GestureDetector(
+          onTap: () {
+            if (_selectMode) {
+              setState(() {
+                if (selected) {
+                  _selectedIds.remove(f.id);
+                } else {
+                  _selectedIds.add(f.id);
+                }
+              });
+            } else {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => FriendProfileScreen(friendUserId: f.userId)),
+              );
+            }
+          },
+          child: Row(
+            children: [
+              if (_selectMode) ...[
+                Icon(
+                  selected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                  color: AppColors.purple,
+                  size: 22,
+                ),
+                const SizedBox(width: 10),
+              ],
+              const CircleAvatar(
+                radius: 22,
+                backgroundColor: Color(0xFFEDEBFB),
+                child: Icon(Icons.person_rounded, color: AppColors.purple),
               ),
-            ),
-            const Icon(Icons.more_vert_rounded, color: AppColors.purple),
-          ],
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(f.fullName, style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.ink)),
+              ),
+              if (!_selectMode) const Icon(Icons.chevron_right_rounded, color: AppColors.purple),
+            ],
+          ),
         ),
       );
     }).toList();
@@ -194,6 +374,7 @@ class _CommunityScreenContentState extends State<CommunityScreenContent> {
       _actionCard(Icons.link_rounded, 'Join via code', 'Enter a code to join an existing group'),
     ];
   }
+
   Widget _actionCard(IconData icon, String title, String sub) {
     return Container(
       padding: const EdgeInsets.all(12),

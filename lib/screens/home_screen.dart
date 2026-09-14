@@ -5,6 +5,8 @@ import 'streak_progress_screen.dart';
 import 'ProfileScreen.dart';
 import '../service/home_service.dart';
 import 'profile_detail_screen.dart';
+import '../service/notification_service.dart';
+import 'notifications_screen.dart';
 
 class FlameLogo extends StatelessWidget {
   final double size;
@@ -164,7 +166,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         Row(
           children: [
-            const Icon(Icons.notifications_none_rounded, color: AppColors.ink, size: 28),
+            _NotificationBell(),
             const SizedBox(width: 12),
             // Avatar — navigates to the actual profile screen
             GestureDetector(
@@ -449,5 +451,60 @@ class _HomeScreenState extends State<HomeScreen> {
   String _monthName(int month) {
     const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return names[month - 1];
+  }
+}
+class _NotificationBell extends StatefulWidget {
+  @override
+  State<_NotificationBell> createState() => _NotificationBellState();
+}
+
+class _NotificationBellState extends State<_NotificationBell> {
+  int _unread = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCount();
+  }
+
+  Future<void> _loadCount() async {
+    try {
+      final count = await NotificationService().fetchUnreadCount();
+      if (mounted) setState(() => _unread = count);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+        );
+        _loadCount(); // refresh badge after returning (in case items were marked read)
+      },
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          const Icon(Icons.notifications_none_rounded, color: AppColors.ink, size: 28),
+          if (_unread > 0)
+            Positioned(
+              right: -2,
+              top: -2,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                constraints: const BoxConstraints(minWidth: 14),
+                decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                child: Text(
+                  _unread > 9 ? '9+' : '$_unread',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
