@@ -14,33 +14,42 @@ class MainWrapper extends StatefulWidget {
 
 class _MainWrapperState extends State<MainWrapper> {
   int _currentIndex = 0;
+  final _todoKey = GlobalKey<TodoScreenState>(); // NEW
+  final _journalKey = GlobalKey<JournalScreenContentState>(); // NEW
 
   void _goToTab(int index) => setState(() => _currentIndex = index);
 
   @override
   Widget build(BuildContext context) {
     final screens = [
-      HomeScreen(onNavigateToTab: _goToTab), // NEW — Home can now switch tabs
-      const TodoScreen(),
-      const JournalScreenContent(),
+      HomeScreen(onNavigateToTab: _goToTab),
+      TodoScreen(key: _todoKey), // was: const TodoScreen()
+      JournalScreenContent(key: _journalKey), // was: const JournalScreenContent()
       const CommunityScreenContent(),
     ];
-
     return GradientScaffold(
-      endDrawer: const ProfileScreen(), // ONE drawer instance for all 4 tabs
+      endDrawer: const ProfileScreen(),
       child: IndexedStack(
         index: _currentIndex,
         children: screens,
       ),
-        bottomNavigationBar: AppBottomNav(
-          index: _currentIndex,
-          onTap: _goToTab,
-          onAdd: () => showAddOptionsSheet(
-            context,
-            onAddTask: () => _goToTab(1),      // Tasks tab index
-            onAddJournal: () => _goToTab(2),   // Journal tab index
-          ),
+      bottomNavigationBar: AppBottomNav(
+        index: _currentIndex,
+        onTap: _goToTab,
+        onAdd: () => showAddOptionsSheet(
+          context,
+          onAddTask: () {
+            _goToTab(1); // switch to Tasks tab so the dialog appears in context
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _todoKey.currentState?.triggerAddTask();
+            });
+          },
+          onAddJournal: () {
+            _goToTab(2); // switch to Journal tab
+            _journalKey.currentState?.triggerStartWriting();
+          },
         ),
+      ),
     );
   }
 }

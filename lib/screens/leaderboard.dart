@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:streakup/screens/add_member_screen.dart';
 import '../shared_widgets.dart';
+import '../service/group_service.dart';
 import 'group_members.dart';
+import 'add_member_screen.dart';
 
 class GroupMember {
   final String name;
@@ -10,7 +13,9 @@ class GroupMember {
   const GroupMember({required this.name, required this.xp, this.isYou = false});
 }
 
-class GroupDetailScreen extends StatelessWidget {
+class GroupDetailScreen extends StatefulWidget {
+  final String groupId;
+  final String inviteCode;
   final String groupName;
   final String tagline;
   final IconData icon;
@@ -21,6 +26,8 @@ class GroupDetailScreen extends StatelessWidget {
 
   const GroupDetailScreen({
     super.key,
+    required this.groupId,
+    required this.inviteCode,
     required this.groupName,
     required this.tagline,
     required this.icon,
@@ -31,8 +38,72 @@ class GroupDetailScreen extends StatelessWidget {
   });
 
   @override
+  State<GroupDetailScreen> createState() => _GroupDetailScreenState();
+}
+
+class _GroupDetailScreenState extends State<GroupDetailScreen> {
+  final _groupService = GroupService();
+
+  late List<GroupMember> _members;
+  late int _memberCount;
+  late int _streak;
+
+  @override
+  void initState() {
+    super.initState();
+    _members = widget.members;
+    _memberCount = widget.memberCount;
+    _streak = widget.streak;
+  }
+
+  Future<void> _refreshAfterAdd() async {
+    try {
+      final stats = await _groupService.fetchLeaderboard(widget.groupId);
+      final streak = await _groupService.fetchGroupStreak(widget.groupId);
+      if (mounted) {
+        setState(() {
+          _members = stats
+              .map((s) => GroupMember(name: s.name, xp: s.xp, isYou: s.isYou))
+              .toList();
+          _memberCount = stats.length;
+          _streak = streak;
+        });
+      }
+    } catch (_) {
+      // silent — sheet already shows success/failure per-friend
+    }
+  }
+
+  Future<void> _confirmLeave(BuildContext context) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text('Leave group?'),
+        content: Text('You\'ll need an invite code to rejoin ${widget.groupName}.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Leave', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+
+    try {
+      await _groupService.leaveGroup(widget.groupId);
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to leave: $e')),
+        );
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final sorted = [...members]..sort((a, b) => b.xp.compareTo(a.xp));
+    final sorted = [..._members]..sort((a, b) => b.xp.compareTo(a.xp));
 
     return GradientScaffold(
       child: SingleChildScrollView(
@@ -47,7 +118,26 @@ class GroupDetailScreen extends StatelessWidget {
                   onTap: () => Navigator.of(context).pop(),
                   child: const Icon(Icons.arrow_back_rounded, color: AppColors.purple, size: 26),
                 ),
-                const Icon(Icons.more_vert_rounded, color: AppColors.ink, size: 24),
+                Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () => showAddMembersSheet(
+                        context,
+                        groupId: widget.groupId,
+                        inviteCode: widget.inviteCode,
+                        onMemberAdded: _refreshAfterAdd,
+                      ),
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: softCard(radius: 10),
+                        child: const Icon(Icons.person_add_alt_1_rounded, color: AppColors.purple, size: 18),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Icon(Icons.more_vert_rounded, color: AppColors.ink, size: 24),
+                  ],
+                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -72,26 +162,26 @@ class GroupDetailScreen extends StatelessWidget {
           width: 64,
           height: 64,
           decoration: BoxDecoration(color: const Color(0xFFEDEBFB), borderRadius: BorderRadius.circular(18)),
-          child: Icon(icon, color: AppColors.purple, size: 30),
+          child: Icon(widget.icon, color: AppColors.purple, size: 30),
         ),
         const SizedBox(width: 14),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(groupName, style: GoogleFonts.nunito(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.ink)),
-              Text(tagline, style: GoogleFonts.nunito(fontSize: 12.5, color: AppColors.sub, fontWeight: FontWeight.w600)),
+              Text(widget.groupName, style: GoogleFonts.nunito(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.ink)),
+              Text(widget.tagline, style: GoogleFonts.nunito(fontSize: 12.5, color: AppColors.sub, fontWeight: FontWeight.w600)),
               const SizedBox(height: 6),
               GestureDetector(
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) => GroupMembersScreen(
-                      groupName: groupName,
-                      tagline: tagline,
-                      icon: icon,
-                      memberCount: memberCount,
-                      members: members
+                      groupName: widget.groupName,
+                      tagline: widget.tagline,
+                      icon: widget.icon,
+                      memberCount: _memberCount,
+                      members: _members
                           .map((m) => GroupMemberEntry(name: m.isYou ? '${m.name} (You)' : m.name))
                           .toList(),
                     ),
@@ -100,7 +190,7 @@ class GroupDetailScreen extends StatelessWidget {
                 child: Row(
                   children: [
                     const Icon(Icons.people_alt_rounded, size: 14, color: AppColors.purple),
-                    Text(' $memberCount Members', style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.sub)),
+                    Text(' $_memberCount Members', style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.sub)),
                   ],
                 ),
               ),
@@ -112,7 +202,7 @@ class GroupDetailScreen extends StatelessWidget {
   }
 
   Widget _buildProgressCard() {
-    final progress = (streak / goalDays).clamp(0.0, 1.0);
+    final progress = (_streak / widget.goalDays).clamp(0.0, 1.0);
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: softCard(radius: 22),
@@ -127,8 +217,8 @@ class GroupDetailScreen extends StatelessWidget {
                 text: TextSpan(
                   style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.purple),
                   children: [
-                    TextSpan(text: '$streak'),
-                    TextSpan(text: ' / $goalDays days', style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.sub)),
+                    TextSpan(text: '$_streak'),
+                    TextSpan(text: ' / ${widget.goalDays} days', style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.sub)),
                   ],
                 ),
               ),
@@ -154,7 +244,7 @@ class GroupDetailScreen extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'Keep going! ${goalDays - streak} more days to reach $goalDays days!',
+            'Keep going! ${widget.goalDays - _streak} more days to reach ${widget.goalDays} days!',
             style: GoogleFonts.nunito(fontSize: 12.5, color: AppColors.sub, fontWeight: FontWeight.w600),
           ),
         ],
@@ -217,9 +307,9 @@ class GroupDetailScreen extends StatelessWidget {
 
   Widget _rankBadge(int rank) {
     final medalColors = {
-      1: const Color(0xFFF2C94C), // gold
-      2: const Color(0xFFB8BCC8), // silver
-      3: const Color(0xFFD08A5B), // bronze
+      1: const Color(0xFFF2C94C),
+      2: const Color(0xFFB8BCC8),
+      3: const Color(0xFFD08A5B),
     };
     if (medalColors.containsKey(rank)) {
       return Icon(Icons.emoji_events_rounded, color: medalColors[rank], size: 22);
@@ -232,7 +322,7 @@ class GroupDetailScreen extends StatelessWidget {
 
   Widget _buildLeaveButton(BuildContext context) {
     return GestureDetector(
-      onTap: () {},
+      onTap: () => _confirmLeave(context),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 16),

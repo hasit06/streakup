@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../shared_widgets.dart';
 import '../service/friend_service.dart';
+import '../service/group_service.dart';
 import 'friends_profile_screen.dart';
 import 'add_friend_screen.dart';
 import 'friend_request_screen.dart';
@@ -17,46 +18,21 @@ class CommunityScreenContent extends StatefulWidget {
 class _CommunityScreenContentState extends State<CommunityScreenContent> {
   bool _groupsTab = false;
   final _friendService = FriendService();
+  final _groupService = GroupService();
   List<Friend> _friends = [];
   bool _loading = true;
 
+  List<GroupModel> _groups = [];
+  bool _groupsLoading = true;
+
   bool _selectMode = false;
   final Set<String> _selectedIds = {};
-
-  final _groups = const [
-    {
-      'name': 'Study Warriors',
-      'tagline': 'Study together. Grow together. 💜',
-      'icon': Icons.groups_rounded,
-      'color': AppColors.purple,
-      'streak': 42,
-      'members': 18,
-      'leaderboard': [
-        GroupMember(name: 'Hasit', xp: 6700, isYou: true),
-        GroupMember(name: 'Aarav', xp: 5230),
-        GroupMember(name: 'Priya', xp: 4180),
-        GroupMember(name: 'Karan', xp: 3650),
-      ],
-    },
-    {
-      'name': 'Coding Ninjas',
-      'tagline': 'Code daily. Level up together. 💻',
-      'icon': Icons.security_rounded,
-      'color': AppColors.purple,
-      'streak': 17,
-      'members': 12,
-      'leaderboard': [
-        GroupMember(name: 'Hasit', xp: 6700, isYou: true),
-        GroupMember(name: 'Diya', xp: 4890),
-        GroupMember(name: 'Rohan', xp: 3200),
-      ],
-    },
-  ];
 
   @override
   void initState() {
     super.initState();
     _loadFriends();
+    _loadGroups();
   }
 
   Future<void> _loadFriends() async {
@@ -69,6 +45,21 @@ class _CommunityScreenContentState extends State<CommunityScreenContent> {
         setState(() => _loading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to load friends: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadGroups() async {
+    setState(() => _groupsLoading = true);
+    try {
+      final groups = await _groupService.fetchMyGroups();
+      if (mounted) setState(() { _groups = groups; _groupsLoading = false; });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _groupsLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load groups: $e')),
         );
       }
     }
@@ -132,6 +123,144 @@ class _CommunityScreenContentState extends State<CommunityScreenContent> {
     }
   }
 
+  Future<void> _openGroup(GroupModel g) async {
+    List<GroupMemberStat> stats;
+    try {
+      stats = await _groupService.fetchLeaderboard(g.id);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load leaderboard: $e')),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    final left = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GroupDetailScreen(
+          groupId: g.id,
+          inviteCode: g.inviteCode,
+          groupName: g.name,
+          tagline: g.tagline,
+          icon: iconForName(g.iconName),
+          streak: g.streak,
+          memberCount: g.memberCount,
+          members: stats
+              .map((s) => GroupMember(name: s.name, xp: s.xp, isYou: s.isYou))
+              .toList(),
+        ),
+      ),
+    );
+    if (left == true) _loadGroups();
+  }
+
+  Future<void> _createGroupDialog() async {
+    final nameController = TextEditingController();
+    final taglineController = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text('Create Group', style: GoogleFonts.nunito(fontWeight: FontWeight.w900)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              autofocus: true,
+              decoration: const InputDecoration(hintText: 'Group name'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: taglineController,
+              decoration: const InputDecoration(hintText: 'Tagline (optional)'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.purple),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Create', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (result != true || nameController.text.trim().isEmpty || !mounted) return;
+
+    try {
+      final group = await _groupService.createGroup(
+        name: nameController.text.trim(),
+        tagline: taglineController.text.trim(),
+      );
+      await _loadGroups();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Group created! Invite code: ${group.inviteCode}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to create group: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _joinGroupDialog() async {
+    final codeController = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text('Join via Code', style: GoogleFonts.nunito(fontWeight: FontWeight.w900)),
+        content: TextField(
+          controller: codeController,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          decoration: const InputDecoration(hintText: 'Enter invite code'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.purple),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Join', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (result != true || codeController.text.trim().isEmpty || !mounted) return;
+
+    try {
+      final group = await _groupService.joinGroupByCode(codeController.text.trim());
+      await _loadGroups();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Joined ${group.name}!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        final msg = e.toString().contains('ALREADY_MEMBER')
+            ? 'You\'re already in this group'
+            : e.toString().contains('Invalid code')
+            ? 'Invalid invite code'
+            : 'Failed to join: $e';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -184,11 +313,14 @@ class _CommunityScreenContentState extends State<CommunityScreenContent> {
                     ),
                   ),
                 ] else
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: softCard(radius: 12),
-                    child: const Icon(Icons.add_rounded, size: 20, color: AppColors.purple),
+                  GestureDetector(
+                    onTap: _createGroupDialog,
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: softCard(radius: 12),
+                      child: const Icon(Icons.add_rounded, size: 20, color: AppColors.purple),
+                    ),
                   ),
               ],
             ),
@@ -246,7 +378,6 @@ class _CommunityScreenContentState extends State<CommunityScreenContent> {
       ],
     );
   }
-
 
   Widget _tabBtn(String label, bool active, VoidCallback onTap) {
     return GestureDetector(
@@ -319,21 +450,18 @@ class _CommunityScreenContentState extends State<CommunityScreenContent> {
   }
 
   List<Widget> _buildGroups() {
+    if (_groupsLoading) {
+      return [const Padding(padding: EdgeInsets.symmetric(vertical: 30), child: Center(child: CircularProgressIndicator(color: AppColors.purple)))];
+    }
+
     return [
-      ..._groups.map((g) => GestureDetector(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => GroupDetailScreen(
-              groupName: g['name'] as String,
-              tagline: g['tagline'] as String,
-              icon: g['icon'] as IconData,
-              streak: g['streak'] as int,
-              memberCount: g['members'] as int,
-              members: g['leaderboard'] as List<GroupMember>,
-            ),
-          ),
+      if (_groups.isEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Center(child: Text('No groups yet — create or join one below', style: GoogleFonts.nunito(color: AppColors.sub, fontWeight: FontWeight.w700))),
         ),
+      ..._groups.map((g) => GestureDetector(
+        onTap: () => _openGroup(g),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 10),
           child: Row(
@@ -342,22 +470,22 @@ class _CommunityScreenContentState extends State<CommunityScreenContent> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(color: const Color(0xFFEDEBFB), borderRadius: BorderRadius.circular(14)),
-                child: Icon(g['icon'] as IconData, color: AppColors.purple, size: 22),
+                child: Icon(iconForName(g.iconName), color: AppColors.purple, size: 22),
               ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(g['name'] as String, style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.ink)),
+                    Text(g.name, style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.ink)),
                     const SizedBox(height: 2),
                     Row(
                       children: [
                         const Icon(Icons.local_fire_department_rounded, size: 14, color: AppColors.orange),
-                        Text(' ${g['streak']} day streak', style: GoogleFonts.nunito(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.purple)),
+                        Text(' ${g.streak} day streak', style: GoogleFonts.nunito(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.purple)),
                         Text('   |   ', style: GoogleFonts.nunito(fontSize: 11, color: AppColors.sub)),
                         const Icon(Icons.people_alt_rounded, size: 13, color: AppColors.purple),
-                        Text(' ${g['members']} Members', style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.sub)),
+                        Text(' ${g.memberCount} Members', style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.sub)),
                       ],
                     ),
                   ],
@@ -369,38 +497,41 @@ class _CommunityScreenContentState extends State<CommunityScreenContent> {
         ),
       )),
       const SizedBox(height: 10),
-      _actionCard(Icons.add_rounded, 'Create group', 'Start a new group and invite members'),
+      _actionCard(Icons.add_rounded, 'Create group', 'Start a new group and invite members', _createGroupDialog),
       const SizedBox(height: 10),
-      _actionCard(Icons.link_rounded, 'Join via code', 'Enter a code to join an existing group'),
+      _actionCard(Icons.link_rounded, 'Join via code', 'Enter a code to join an existing group', _joinGroupDialog),
     ];
   }
 
-  Widget _actionCard(IconData icon, String title, String sub) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.cardBorder),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: const BoxDecoration(color: AppColors.purple, shape: BoxShape.circle),
-            child: Icon(icon, color: Colors.white, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: GoogleFonts.nunito(fontSize: 13.5, fontWeight: FontWeight.w800, color: AppColors.purple)),
-                Text(sub, style: GoogleFonts.nunito(fontSize: 11, color: AppColors.sub, fontWeight: FontWeight.w600)),
-              ],
+  Widget _actionCard(IconData icon, String title, String sub, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.cardBorder),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: const BoxDecoration(color: AppColors.purple, shape: BoxShape.circle),
+              child: Icon(icon, color: Colors.white, size: 20),
             ),
-          ),
-        ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: GoogleFonts.nunito(fontSize: 13.5, fontWeight: FontWeight.w800, color: AppColors.purple)),
+                  Text(sub, style: GoogleFonts.nunito(fontSize: 11, color: AppColors.sub, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

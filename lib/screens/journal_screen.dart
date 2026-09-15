@@ -7,11 +7,12 @@ import 'journal_entries.dart';
 class JournalScreenContent extends StatefulWidget {
   const JournalScreenContent({super.key});
   @override
-  State<JournalScreenContent> createState() => _JournalScreenContentState();
+  State<JournalScreenContent> createState() => JournalScreenContentState(); // was _JournalScreenContentState()
 }
 
-class _JournalScreenContentState extends State<JournalScreenContent> {
+class JournalScreenContentState extends State<JournalScreenContent> { // was _JournalScreenContentState, now public
   final _entry = TextEditingController();
+  final _entryFocus = FocusNode(); // NEW
   final _service = JournalService();
   String? _selectedMood;
   DateTime _selectedDate = DateTime.now();
@@ -24,6 +25,20 @@ class _JournalScreenContentState extends State<JournalScreenContent> {
     super.initState();
     _loadForDate(_selectedDate);
     _loadInsights();
+  }
+
+  @override
+  void dispose() {
+    _entry.dispose();
+    _entryFocus.dispose();
+    super.dispose();
+  }
+
+  // NEW — called externally to jump straight into writing
+  void triggerStartWriting() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FocusScope.of(context).requestFocus(_entryFocus);
+    });
   }
 
   Future<void> _loadForDate(DateTime date) async {
@@ -88,7 +103,7 @@ class _JournalScreenContentState extends State<JournalScreenContent> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Journal saved!')),
         );
-        _loadInsights(); // refresh insights in case today became "yesterday's" reference point elsewhere
+        _loadInsights();
       }
     } catch (e) {
       if (mounted) {
@@ -190,6 +205,7 @@ class _JournalScreenContentState extends State<JournalScreenContent> {
                   ),
                   child: TextField(
                     controller: _entry,
+                    focusNode: _entryFocus, // NEW
                     maxLines: null,
                     style: GoogleFonts.nunito(fontSize: 14, color: AppColors.ink),
                     decoration: InputDecoration(

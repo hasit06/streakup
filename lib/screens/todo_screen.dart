@@ -43,24 +43,18 @@ class TodoScreen extends StatefulWidget {
   const TodoScreen({super.key});
 
   @override
-  State<TodoScreen> createState() => _TodoScreenState();
+  State<TodoScreen> createState() => TodoScreenState();
 }
 
 enum _Filter { all, pending, completed }
 
-class _TodoScreenState extends State<TodoScreen> {
+class TodoScreenState extends State<TodoScreen> {
   final _supabase = Supabase.instance.client;
   final _streakService = StreakService();
   List<_Task> _tasks = [];
   StreakStats? _stats;
   bool _loading = true;
   _Filter _filter = _Filter.all;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchAll();
-  }
 
   Future<void> _fetchAll() async {
     setState(() => _loading = true);
@@ -136,6 +130,8 @@ class _TodoScreenState extends State<TodoScreen> {
       ),
     );
 
+
+
     if (title == null || title.isEmpty || !mounted) return;
 
     final repeatResult = await _showRepeatDialog();
@@ -167,6 +163,10 @@ class _TodoScreenState extends State<TodoScreen> {
         );
       }
     }
+  }
+
+  Future<void> triggerAddTask() async {
+    await _addTask();
   }
 
   Future<_RepeatChoice?> _showRepeatDialog() async {
@@ -353,6 +353,11 @@ class _TodoScreenState extends State<TodoScreen> {
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
     ];
     return names[month - 1];
+  }
+  @override
+  void initState() {
+    super.initState();
+    _fetchAll();
   }
 
   @override
