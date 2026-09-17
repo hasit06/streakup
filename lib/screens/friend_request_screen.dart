@@ -38,10 +38,9 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
 
   Future<void> _accept(Map<String, dynamic> req) async {
     final id = req['id'] as String;
-    final senderId = req['sender_id'] as String;
     setState(() => _requests.removeWhere((r) => r['id'] == id));
     try {
-      await _service.acceptRequest(id, senderId);
+      await _service.acceptRequest(id);
     } catch (e) {
       setState(() => _requests.add(req));
       if (mounted) {

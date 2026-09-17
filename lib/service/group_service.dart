@@ -121,6 +121,56 @@ class GroupService {
     return (rows as List).map((r) => r['user_id'] as String).toSet();
   }
 
+  /// Realtime updates for one group's leaderboard: membership changes
+  /// and XP changes on any profile row. Caller removes the channel in dispose().
+  RealtimeChannel subscribeToGroupUpdates(
+      String groupId,
+      VoidCallback onChange,
+      ) {
+    final channel = _supabase.channel('group_leaderboard:$groupId')
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'group_members',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'group_id',
+          value: groupId,
+        ),
+        callback: (_) => onChange(),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.update,
+        schema: 'public',
+        table: 'profiles',
+        callback: (_) => onChange(),
+      )
+      ..subscribe();
+
+    return channel;
+  }
+
+  /// Realtime: fires when the current user is added to or removed from
+  /// ANY group — e.g. a friend adds you to a group from their device.
+  /// Caller removes the channel in dispose().
+  RealtimeChannel subscribeToMyGroups(VoidCallback onChange) {
+    final userId = _supabase.auth.currentUser?.id;
+    final channel = _supabase.channel('my_groups:${userId ?? 'anon'}')
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'group_members',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'user_id',
+          value: userId,
+        ),
+        callback: (_) => onChange(),
+      )
+      ..subscribe();
+    return channel;
+  }
+
   Future<GroupModel> createGroup({
     required String name,
     required String tagline,

@@ -53,6 +53,13 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
     setState(() => _sent = true);
     try {
       await _service.sendFriendRequest(_foundUser!['id'] as String);
+    } on FriendRequestException catch (e) {
+      setState(() => _sent = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      }
     } catch (e) {
       setState(() => _sent = false);
       if (mounted) {

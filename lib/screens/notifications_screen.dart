@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../shared_widgets.dart';
 import '../service/notification_service.dart';
+import '../service/friend_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -10,15 +12,25 @@ class NotificationsScreen extends StatefulWidget {
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
+RealtimeChannel? _channel;
 class _NotificationsScreenState extends State<NotificationsScreen> {
   final _service = NotificationService();
+  final _friendService = FriendService();
   List<AppNotification> _items = [];
   bool _loading = true;
+  final Set<String> _actingOnIds = {}; // requestIds currently being accepted/declined
 
   @override
   void initState() {
     super.initState();
     _load();
+    _channel = _service.subscribeToMyNotifications(_load);
+  }
+
+  @override
+  void dispose() {
+    if (_channel != null) Supabase.instance.client.removeChannel(_channel!);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -37,6 +49,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _onTapItem(AppNotification item) async {
+    if (item.type == 'friend_request') return; // handled by its own buttons
     if (!item.unread) return;
     setState(() {
       final idx = _items.indexWhere((n) => n.id == item.id);
@@ -45,7 +58,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     try {
       await _service.markAsRead(item.id);
     } catch (_) {
-      // silent — not critical if this fails, next full load will resync
+      // silent ? not critical if this fails, next full load will resync
     }
   }
 
@@ -66,6 +79,53 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  Future<void> _acceptFriendRequest(AppNotification item) async {
+    final requestId = item.referenceId;
+    if (requestId == null || _actingOnIds.contains(requestId)) return;
+    setState(() => _actingOnIds.add(requestId));
+    try {
+      await _friendService.acceptRequest(requestId);
+      if (mounted) {
+        setState(() {
+          _items.removeWhere((n) => n.id == item.id);
+          _actingOnIds.remove(requestId);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Friend request accepted')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _actingOnIds.remove(requestId));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to accept: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _declineFriendRequest(AppNotification item) async {
+    final requestId = item.referenceId;
+    if (requestId == null || _actingOnIds.contains(requestId)) return;
+    setState(() => _actingOnIds.add(requestId));
+    try {
+      await _friendService.declineRequest(requestId);
+      if (mounted) {
+        setState(() {
+          _items.removeWhere((n) => n.id == item.id);
+          _actingOnIds.remove(requestId);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _actingOnIds.remove(requestId));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to decline: $e')),
+        );
+      }
+    }
+  }
+
   ({IconData icon, Color bg, Color color}) _styleFor(String type) {
     switch (type) {
       case 'streak_milestone':
@@ -80,6 +140,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return (icon: Icons.star_rounded, bg: const Color(0xFFEDEBFB), color: AppColors.purple);
       case 'friend_nudge':
         return (icon: Icons.favorite_rounded, bg: const Color(0xFFFCE4EC), color: const Color(0xFFE85878));
+      case 'friend_request':
+        return (icon: Icons.person_add_rounded, bg: const Color(0xFFEDEBFB), color: AppColors.purple);
       default:
         return (icon: Icons.notifications_rounded, bg: const Color(0xFFEDEBFB), color: AppColors.purple);
     }
@@ -156,8 +218,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 itemBuilder: (context, i) {
                   final item = _items[i];
                   final style = _styleFor(item.type);
+                  final isFriendRequest = item.type == 'friend_request';
+                  final isActing = item.referenceId != null && _actingOnIds.contains(item.referenceId);
+
                   return GestureDetector(
-                    onTap: () => _onTapItem(item),
+                    onTap: isFriendRequest ? null : () => _onTapItem(item),
                     child: _NotificationCard(
                       icon: style.icon,
                       iconBg: style.bg,
@@ -166,6 +231,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       subtitle: item.body ?? '',
                       time: _timeAgo(item.createdAt),
                       unread: item.unread,
+                      isFriendRequest: isFriendRequest,
+                      isActing: isActing,
+                      onAccept: isFriendRequest ? () => _acceptFriendRequest(item) : null,
+                      onDecline: isFriendRequest ? () => _declineFriendRequest(item) : null,
                     ),
                   );
                 },
@@ -186,6 +255,10 @@ class _NotificationCard extends StatelessWidget {
   final String subtitle;
   final String time;
   final bool unread;
+  final bool isFriendRequest;
+  final bool isActing;
+  final VoidCallback? onAccept;
+  final VoidCallback? onDecline;
 
   const _NotificationCard({
     required this.icon,
@@ -195,6 +268,10 @@ class _NotificationCard extends StatelessWidget {
     required this.subtitle,
     required this.time,
     required this.unread,
+    this.isFriendRequest = false,
+    this.isActing = false,
+    this.onAccept,
+    this.onDecline,
   });
 
   @override
@@ -219,6 +296,39 @@ class _NotificationCard extends StatelessWidget {
                 Text(title, style: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.ink)),
                 const SizedBox(height: 4),
                 Text(subtitle, style: GoogleFonts.nunito(fontSize: 13.5, color: AppColors.sub)),
+                if (isFriendRequest) ...[
+                  const SizedBox(height: 10),
+                  if (isActing)
+                    const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.purple),
+                    )
+                  else
+                    Row(
+                      children: [
+                        GestureDetector(
+                          onTap: onAccept,
+                          child: Container(
+                            width: 34,
+                            height: 34,
+                            decoration: const BoxDecoration(color: AppColors.purple, shape: BoxShape.circle),
+                            child: const Icon(Icons.check_rounded, color: Colors.white, size: 18),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        GestureDetector(
+                          onTap: onDecline,
+                          child: Container(
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(color: const Color(0xFFFFE2E2), shape: BoxShape.circle),
+                            child: const Icon(Icons.close_rounded, color: Color(0xFFE05555), size: 18),
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
               ],
             ),
           ),
@@ -228,7 +338,7 @@ class _NotificationCard extends StatelessWidget {
             children: [
               Text(time, style: GoogleFonts.nunito(fontSize: 12, color: AppColors.sub)),
               const SizedBox(height: 8),
-              if (unread)
+              if (unread && !isFriendRequest)
                 Container(
                   width: 8,
                   height: 8,

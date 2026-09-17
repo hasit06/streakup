@@ -7,6 +7,8 @@ import 'friends_profile_screen.dart';
 import 'add_friend_screen.dart';
 import 'friend_request_screen.dart';
 import 'leaderboard.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../service/app_events.dart';
 
 class CommunityScreenContent extends StatefulWidget {
   const CommunityScreenContent({super.key});
@@ -14,6 +16,9 @@ class CommunityScreenContent extends StatefulWidget {
   @override
   State<CommunityScreenContent> createState() => _CommunityScreenContentState();
 }
+
+RealtimeChannel? _groupsChannel;
+RealtimeChannel? _friendsChannel;
 
 class _CommunityScreenContentState extends State<CommunityScreenContent> {
   bool _groupsTab = false;
@@ -33,6 +38,20 @@ class _CommunityScreenContentState extends State<CommunityScreenContent> {
     super.initState();
     _loadFriends();
     _loadGroups();
+
+    AppEvents.groups.addListener(_loadGroups);
+    AppEvents.tasks.addListener(_loadGroups); // group streaks can shift when tasks complete
+    _groupsChannel = _groupService.subscribeToMyGroups(_loadGroups);
+    _friendsChannel = _friendService.subscribeToFriendChanges(_loadFriends);
+  }
+
+  @override
+  void dispose() {
+    AppEvents.groups.removeListener(_loadGroups);
+    AppEvents.tasks.removeListener(_loadGroups);
+    if (_groupsChannel != null) Supabase.instance.client.removeChannel(_groupsChannel!);
+    if (_friendsChannel != null) Supabase.instance.client.removeChannel(_friendsChannel!);
+    super.dispose();
   }
 
   Future<void> _loadFriends() async {
