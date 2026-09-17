@@ -14,6 +14,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
   final _service = FriendService();
   List<Map<String, dynamic>> _requests = [];
   bool _loading = true;
+  final Set<Future> _pendingOps = {};
 
   @override
   void initState() {
@@ -39,8 +40,10 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
   Future<void> _accept(Map<String, dynamic> req) async {
     final id = req['id'] as String;
     setState(() => _requests.removeWhere((r) => r['id'] == id));
+    final op = _service.acceptRequest(id);
+    _pendingOps.add(op);
     try {
-      await _service.acceptRequest(id);
+      await op;
     } catch (e) {
       setState(() => _requests.add(req));
       if (mounted) {
@@ -48,14 +51,18 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
           SnackBar(content: Text('Failed to accept: $e')),
         );
       }
+    } finally {
+      _pendingOps.remove(op);
     }
   }
 
   Future<void> _decline(Map<String, dynamic> req) async {
     final id = req['id'] as String;
     setState(() => _requests.removeWhere((r) => r['id'] == id));
+    final op = _service.declineRequest(id);
+    _pendingOps.add(op);
     try {
-      await _service.declineRequest(id);
+      await op;
     } catch (e) {
       setState(() => _requests.add(req));
       if (mounted) {
@@ -63,13 +70,27 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
           SnackBar(content: Text('Failed to decline: $e')),
         );
       }
+    } finally {
+      _pendingOps.remove(op);
     }
+  }
+
+  Future<void> _goBack() async {
+    if (_pendingOps.isNotEmpty) {
+      await Future.wait(_pendingOps.toList());
+    }
+    if (mounted) Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
-    return GradientScaffold(
-      child: SingleChildScrollView(
+    return PopScope(
+        canPop: _pendingOps.isEmpty,
+        onPopInvokedWithResult: (didPop, result) {
+          if (!didPop) _goBack();
+        },
+        child: GradientScaffold(
+          child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -77,7 +98,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
             Row(
               children: [
                 GestureDetector(
-                  onTap: () => Navigator.of(context).pop(),
+                  onTap: _goBack,
                   child: const Icon(Icons.arrow_back_rounded, color: AppColors.purple, size: 26),
                 ),
                 const SizedBox(width: 14),
@@ -136,6 +157,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 }

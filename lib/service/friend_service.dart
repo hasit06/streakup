@@ -182,12 +182,14 @@ class FriendService {
         event: PostgresChangeEvent.all,
         schema: 'public',
         table: 'friends',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'user_id',
-          value: userId,
-        ),
-        callback: (_) => onChange(),
+        // no server-side filter: DELETE payloads don't reliably include
+        // user_id unless REPLICA IDENTITY FULL is set on this table.
+        callback: (payload) {
+          final newRow = payload.newRecord;
+          final oldRow = payload.oldRecord;
+          final matches = newRow['user_id'] == userId || oldRow['user_id'] == userId;
+          if (matches) onChange();
+        },
       )
       ..subscribe();
     return channel;
@@ -229,19 +231,8 @@ class FriendService {
   }
 
   Future<void> _unfriendBothSides(String userId, String otherUserId) async {
-    await _supabase
-        .from('friends')
-        .delete()
-        .or('and(user_id.eq.$userId,friend_id.eq.$otherUserId),'
-        'and(user_id.eq.$otherUserId,friend_id.eq.$userId)');
-
-    await _supabase
-        .from('friend_requests')
-        .delete()
-        .or('and(sender_id.eq.$userId,receiver_id.eq.$otherUserId),'
-        'and(sender_id.eq.$otherUserId,receiver_id.eq.$userId)');
+    await _supabase.rpc('unfriend', params: {'p_other_user_id': otherUserId});
   }
-
   Future<StreakStats> fetchFriendStats(String friendUserId) async {
     final rows = await _supabase
         .from('streak_days')

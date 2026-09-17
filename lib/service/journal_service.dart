@@ -43,7 +43,8 @@ class JournalService {
     return row == null ? null : JournalEntry.fromMap(row);
   }
 
-  /// Most recent entry strictly before [beforeDay] (used for "Yesterday's Insights").
+  /// Most recent entry strictly before [beforeDay]. Kept for callers that
+  /// explicitly want to exclude "today" (e.g. a true "yesterday" widget).
   Future<JournalEntry?> fetchLatestEntryBefore(DateTime beforeDay) async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) return null;
@@ -58,6 +59,44 @@ class JournalService {
 
     final list = rows as List;
     return list.isEmpty ? null : JournalEntry.fromMap(list.first);
+  }
+
+  /// Most recent journal entry overall (today included). Use this for a
+  /// "Latest entry" widget that should update the instant a new entry is saved.
+  Future<JournalEntry?> fetchLatestEntry() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return null;
+
+    final rows = await _supabase
+        .from('journal_entries')
+        .select()
+        .eq('user_id', userId)
+        .order('day', ascending: false)
+        .order('updated_at', ascending: false)
+        .limit(1);
+
+    final list = rows as List;
+    return list.isEmpty ? null : JournalEntry.fromMap(list.first);
+  }
+
+  /// Days (1-31) within [month] that have a journal entry, for calendar coloring.
+  Future<Set<int>> fetchJournaledDaysForMonth(DateTime month) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return {};
+
+    final firstDay = DateTime(month.year, month.month, 1);
+    final lastDay = DateTime(month.year, month.month + 1, 0);
+
+    final rows = await _supabase
+        .from('journal_entries')
+        .select('day')
+        .eq('user_id', userId)
+        .gte('day', _dateOnly(firstDay))
+        .lte('day', _dateOnly(lastDay));
+
+    return (rows as List)
+        .map((r) => DateTime.parse(r['day'] as String).day)
+        .toSet();
   }
 
   Future<List<JournalEntry>> fetchAllEntries() async {

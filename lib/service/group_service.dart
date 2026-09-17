@@ -132,12 +132,14 @@ class GroupService {
         event: PostgresChangeEvent.all,
         schema: 'public',
         table: 'group_members',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'group_id',
-          value: groupId,
-        ),
-        callback: (_) => onChange(),
+        // no filter: DELETE payloads don't reliably include group_id
+        // unless REPLICA IDENTITY FULL is set, so filter client-side instead.
+        callback: (payload) {
+          final newRow = payload.newRecord;
+          final oldRow = payload.oldRecord;
+          final matches = newRow['group_id'] == groupId || oldRow['group_id'] == groupId;
+          if (matches) onChange();
+        },
       )
       ..onPostgresChanges(
         event: PostgresChangeEvent.update,

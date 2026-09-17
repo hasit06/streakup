@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../shared_widgets.dart';
 import '../service/journal_service.dart';
 import 'journal_entries.dart';
+import 'journal_calendar_picker.dart';
 
 class JournalScreenContent extends StatefulWidget {
   const JournalScreenContent({super.key});
@@ -17,7 +18,7 @@ class JournalScreenContentState extends State<JournalScreenContent> { // was _Jo
   String? _selectedMood;
   DateTime _selectedDate = DateTime.now();
   JournalEntry? _currentEntry;
-  JournalEntry? _latestPastEntry;
+  JournalEntry? _latestEntry;
   bool _loading = true;
 
   @override
@@ -34,7 +35,7 @@ class JournalScreenContentState extends State<JournalScreenContent> { // was _Jo
     super.dispose();
   }
 
-  // NEW — called externally to jump straight into writing
+  // NEW ? called externally to jump straight into writing
   void triggerStartWriting() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       FocusScope.of(context).requestFocus(_entryFocus);
@@ -65,25 +66,19 @@ class JournalScreenContentState extends State<JournalScreenContent> { // was _Jo
 
   Future<void> _loadInsights() async {
     try {
-      final entry = await _service.fetchLatestEntryBefore(DateTime.now());
-      if (mounted) setState(() => _latestPastEntry = entry);
+      // Most recent entry overall, so this updates the instant a new
+      // entry is saved instead of waiting until "today" becomes "yesterday".
+      final entry = await _service.fetchLatestEntry();
+      if (mounted) setState(() => _latestEntry = entry);
     } catch (e) {
       // non-fatal
     }
   }
 
   Future<void> _pickDate() async {
-    final picked = await showDatePicker(
+    final picked = await showDialog<DateTime>(
       context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.light(primary: AppColors.purple),
-        ),
-        child: child!,
-      ),
+      builder: (ctx) => JournalCalendarPicker(initialDate: _selectedDate),
     );
 
     if (picked == null) return;
@@ -286,14 +281,25 @@ class JournalScreenContentState extends State<JournalScreenContent> { // was _Jo
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Latest entry', style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.ink)),
+                          Row(
+                            children: [
+                              Text('Latest entry', style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.ink)),
+                              if (_latestEntry != null) ...[
+                                const SizedBox(width: 8),
+                                Text(
+                                  _formatDate(_latestEntry!.day),
+                                  style: GoogleFonts.nunito(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppColors.purple),
+                                ),
+                              ],
+                            ],
+                          ),
                           const SizedBox(height: 4),
                           Text(
-                            _latestPastEntry == null
-                                ? 'No past entries yet — write your first one above!'
-                                : _latestPastEntry!.entryText.isEmpty
+                            _latestEntry == null
+                                ? 'No past entries yet ? write your first one above!'
+                                : _latestEntry!.entryText.isEmpty
                                 ? '(empty entry)'
-                                : _latestPastEntry!.entryText,
+                                : _latestEntry!.entryText,
                             style: GoogleFonts.nunito(fontSize: 11.5, color: AppColors.sub, fontWeight: FontWeight.w600),
                           ),
                         ],
