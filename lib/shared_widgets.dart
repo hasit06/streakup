@@ -4,6 +4,7 @@ import 'main.dart'; // <-- ADJUST: path to wherever main.dart lives relative to 
 import 'screens/main_wrapper.dart'; // <-- ADJUST: path to wherever MainWrapper lives
 import 'screens/notifications_screen.dart'; // adjust path if your screens folder is elsewhere
 import 'screens/profile_detail_screen.dart';
+import '../service/profile_store.dart'; // <-- ADJUST: path to wherever ProfileStore lives
 
 void showAddOptionsSheet(
     BuildContext context, {
@@ -217,16 +218,30 @@ class GradientScaffold extends StatelessWidget {
     );
   }
 }
+
 class AppTopBar extends StatelessWidget {
   final VoidCallback? onBack;
-  const AppTopBar({super.key, this.onBack});
+
+  /// Set true only on the homescreen: shows a hamburger icon that opens
+  /// the end drawer instead of a back arrow that navigates home.
+  final bool showMenu;
+
+  const AppTopBar({super.key, this.onBack, this.showMenu = false});
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        _circleBtn(icon: Icons.arrow_back_rounded, onTap: onBack ?? _goHome),
+        Builder(
+          builder: (innerContext) => _circleBtn(
+            icon: showMenu ? Icons.menu_rounded : Icons.arrow_back_rounded,
+            onTap: onBack ??
+                (showMenu
+                    ? () => Scaffold.of(innerContext).openEndDrawer()
+                    : _goHome),
+          ),
+        ),
         Row(
           children: [
             _circleBtn(
@@ -237,23 +252,7 @@ class AppTopBar extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 10),
-            GestureDetector(
-              onTap: () => navigatorKey.currentState?.push(
-                MaterialPageRoute(builder: (_) => const ProfileDetailScreen()),
-              ),
-              child: ClipOval(
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  color: Colors.white,
-                  child: Image.asset(
-                    'assets/avatar.png',
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const Icon(Icons.person_rounded, color: AppColors.purple, size: 26),
-                  ),
-                ),
-              ),
-            ),
+            const _AppTopBarAvatar(),
           ],
         ),
       ],
@@ -290,6 +289,42 @@ class AppTopBar extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Shows the user's actual chosen avatar (from ProfileStore) instead of a
+/// hardcoded asset, and updates automatically if the user changes it.
+class _AppTopBarAvatar extends StatelessWidget {
+  const _AppTopBarAvatar();
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: ProfileStore.instance,
+      builder: (context, _) {
+        final avatarPath = ProfileStore.instance.profile?.avatarPath;
+        return GestureDetector(
+          onTap: () => navigatorKey.currentState?.push(
+            MaterialPageRoute(builder: (_) => const ProfileDetailScreen()),
+          ),
+          child: ClipOval(
+            child: Container(
+              width: 44,
+              height: 44,
+              color: Colors.white,
+              child: avatarPath != null
+                  ? Image.asset(
+                avatarPath,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) =>
+                const Icon(Icons.person_rounded, color: AppColors.purple, size: 26),
+              )
+                  : const Icon(Icons.person_rounded, color: AppColors.purple, size: 26),
+            ),
+          ),
+        );
+      },
     );
   }
 }

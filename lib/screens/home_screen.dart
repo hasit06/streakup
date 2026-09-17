@@ -3,12 +3,9 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'streak_progress_screen.dart';
 import '../service/home_service.dart';
-import 'profile_detail_screen.dart';
-import '../service/notification_service.dart';
-import 'notifications_screen.dart';
 import '../service/profile_store.dart';
 import '../service/app_events.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../shared_widgets.dart' hide AppColors;
 
 class FlameLogo extends StatelessWidget {
   final double size;
@@ -128,32 +125,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _logout(BuildContext context) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Log out?'),
-        content: const Text(
-          'Are you sure you want to log out?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Log out'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      await ProfileStore.instance.signOut();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -210,7 +181,7 @@ class _HomeScreenState extends State<HomeScreen> {
               crossAxisAlignment:
               CrossAxisAlignment.start,
               children: [
-                _buildTopHeader(context, data),
+                const AppTopBar(showMenu: true),
                 const SizedBox(height: 16),
 
                 Text(
@@ -271,86 +242,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       },
-    );
-  }
-
-  Widget _buildTopHeader(
-      BuildContext context,
-      dynamic data,
-      ) {
-    return Row(
-      mainAxisAlignment:
-      MainAxisAlignment.spaceBetween,
-      children: [
-        Builder(
-          builder: (innerContext) => GestureDetector(
-            onTap: () =>
-                Scaffold.of(innerContext)
-                    .openEndDrawer(),
-            child: Container(
-              height: 44,
-              width: 44,
-              decoration: BoxDecoration(
-                color: AppColors.white,
-                borderRadius:
-                BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color:
-                    Colors.black.withOpacity(0.03),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.menu_rounded,
-                color: AppColors.ink,
-              ),
-            ),
-          ),
-        ),
-        Row(
-          children: [
-            const _NotificationBell(),
-            const SizedBox(width: 12),
-            GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                    const ProfileDetailScreen(),
-                  ),
-                );
-              },
-              onLongPress: () => _logout(context),
-              child: ClipOval(
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  color: AppColors.lightPurple,
-                  child: data.avatarPath != null
-                      ? Image.asset(
-                    data.avatarPath!,
-                    fit: BoxFit.cover,
-                    errorBuilder:
-                        (_, __, ___) =>
-                    const Icon(
-                      Icons.person_rounded,
-                      color: AppColors.purple,
-                    ),
-                  )
-                      : const Icon(
-                    Icons.person_rounded,
-                    color: AppColors.purple,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
     );
   }
 
@@ -499,11 +390,7 @@ class _HomeScreenState extends State<HomeScreen> {
     strokeWidth: 9,
     backgroundColor:
     AppColors.lightPurple,
-    valueColor:
-    const AlwaysStoppedAnimation<
-    Color>(
-    AppColors.purple,
-    ),
+      valueColor: const AlwaysStoppedAnimation<Color>(AppColors.purple),
     strokeCap:
     StrokeCap.round,
     ),
@@ -686,7 +573,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             )
                 : Text(
-              'No pending tasks — nice work! 🎉',
+              'No pending tasks ? nice work! ?',
               style: AppText.body(
                 size: 13,
                 weight: FontWeight.w700,
@@ -846,108 +733,5 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
 
     return names[month - 1];
-  }
-}
-
-class _NotificationBell extends StatefulWidget {
-  const _NotificationBell();
-
-  @override
-  State<_NotificationBell> createState() =>
-      _NotificationBellState();
-}
-
-class _NotificationBellState
-    extends State<_NotificationBell> {
-  int _unread = 0;
-  RealtimeChannel? _notifChannel;
-
-  @override
-  void initState() {
-    super.initState();
-
-    AppEvents.notifications.addListener(_loadCount);
-    _notifChannel = NotificationService().subscribeToMyNotifications(_loadCount);
-
-    _loadCount();
-  }
-
-  @override
-  void dispose() {
-    AppEvents.notifications.removeListener(_loadCount);
-    if (_notifChannel != null) Supabase.instance.client.removeChannel(_notifChannel!);
-
-    super.dispose();
-  }
-
-  Future<void> _loadCount() async {
-    try {
-      final count =
-      await NotificationService()
-          .fetchUnreadCount();
-
-      if (mounted) {
-        setState(() => _unread = count);
-      }
-    } catch (_) {}
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () async {
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) =>
-            const NotificationsScreen(),
-          ),
-        );
-
-        _loadCount();
-      },
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          const Icon(
-            Icons.notifications_none_rounded,
-            color: AppColors.ink,
-            size: 28,
-          ),
-          if (_unread > 0)
-            Positioned(
-              right: -2,
-              top: -2,
-              child: Container(
-                padding:
-                const EdgeInsets.symmetric(
-                  horizontal: 4,
-                  vertical: 1,
-                ),
-                constraints:
-                const BoxConstraints(
-                  minWidth: 14,
-                ),
-                decoration:
-                const BoxDecoration(
-                  color: Colors.red,
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  _unread > 9
-                      ? '9+'
-                      : '$_unread',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
   }
 }

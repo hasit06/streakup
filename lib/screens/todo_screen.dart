@@ -3,9 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'streak_progress_screen.dart';
 import 'calendar_screen.dart';
-import 'notifications_screen.dart';
-import 'profile_detail_screen.dart';
 import '../service/streak_service.dart';
+import '../shared_widgets.dart';
 
 class _Task {
   final String id;
@@ -13,6 +12,7 @@ class _Task {
   bool completed;
   bool repeats;
   List<int> repeatDays; // 1=Mon ... 7=Sun
+  final DateTime createdAt;
 
   _Task({
     required this.id,
@@ -20,6 +20,7 @@ class _Task {
     this.completed = false,
     this.repeats = false,
     this.repeatDays = const [],
+    required this.createdAt,
   });
 
   factory _Task.fromMap(Map<String, dynamic> map) {
@@ -29,8 +30,14 @@ class _Task {
       completed: map['completed'] as bool,
       repeats: map['repeats'] as bool? ?? false,
       repeatDays: (map['repeat_days'] as List?)?.map((e) => e as int).toList() ?? [],
+      createdAt: DateTime.parse(map['created_at'] as String),
     );
   }
+
+  /// Non-repeating ("Just today") tasks disappear 24h after creation.
+  /// Repeating tasks never expire this way.
+  bool get isExpired =>
+      !repeats && DateTime.now().difference(createdAt).inHours >= 24;
 }
 
 class _RepeatChoice {
@@ -56,6 +63,9 @@ class TodoScreenState extends State<TodoScreen> {
   bool _loading = true;
   _Filter _filter = _Filter.all;
 
+  bool _selectionMode = false;
+  final Set<String> _selectedTaskIds = {};
+
   Future<void> _fetchAll() async {
     setState(() => _loading = true);
     await Future.wait([_fetchTasks(), _fetchStats()]);
@@ -73,10 +83,18 @@ class TodoScreenState extends State<TodoScreen> {
           .eq('user_id', userId)
           .order('created_at', ascending: false);
 
-      if (mounted) {
-        setState(() {
-          _tasks = (response as List).map((row) => _Task.fromMap(row)).toList();
-        });
+      if (!mounted) return;
+
+      final fetched = (response as List).map((row) => _Task.fromMap(row)).toList();
+      final expired = fetched.where((t) => t.isExpired).toList();
+      final active = fetched.where((t) => !t.isExpired).toList();
+
+      setState(() {
+        _tasks = active;
+      });
+
+      if (expired.isNotEmpty) {
+        _deleteExpiredTasks(expired);
       }
     } catch (e) {
       if (mounted) {
@@ -87,12 +105,20 @@ class TodoScreenState extends State<TodoScreen> {
     }
   }
 
+  Future<void> _deleteExpiredTasks(List<_Task> expired) async {
+    try {
+      await _supabase.from('tasks').delete().inFilter('id', expired.map((t) => t.id).toList());
+    } catch (_) {
+      // Non-fatal: if this fails they'll just get filtered out again next fetch.
+    }
+  }
+
   Future<void> _fetchStats() async {
     try {
       final stats = await _streakService.fetchStats();
       if (mounted) setState(() => _stats = stats);
     } catch (e) {
-      // Non-fatal — info card just falls back to placeholders if this fails
+      // Non-fatal ? info card just falls back to placeholders if this fails
     }
   }
 
@@ -170,7 +196,8 @@ class TodoScreenState extends State<TodoScreen> {
   }
 
   Future<_RepeatChoice?> _showRepeatDialog() async {
-    bool repeats = false;
+    // 0 = Just today, 1 = Every day, 2 = Specific days
+    int mode = 0;
     final selectedDays = <int>{};
     const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -185,23 +212,31 @@ class TodoScreenState extends State<TodoScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              RadioListTile<bool>(
+              RadioListTile<int>(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Just today'),
-                value: false,
-                groupValue: repeats,
+                value: 0,
+                groupValue: mode,
                 activeColor: const Color(0xFF6C5CE7),
-                onChanged: (v) => setDialogState(() => repeats = false),
+                onChanged: (v) => setDialogState(() => mode = 0),
               ),
-              RadioListTile<bool>(
+              RadioListTile<int>(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Every day'),
+                value: 1,
+                groupValue: mode,
+                activeColor: const Color(0xFF6C5CE7),
+                onChanged: (v) => setDialogState(() => mode = 1),
+              ),
+              RadioListTile<int>(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Repeat on specific days'),
-                value: true,
-                groupValue: repeats,
+                value: 2,
+                groupValue: mode,
                 activeColor: const Color(0xFF6C5CE7),
-                onChanged: (v) => setDialogState(() => repeats = true),
+                onChanged: (v) => setDialogState(() => mode = 2),
               ),
-              if (repeats) ...[
+              if (mode == 2) ...[
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
@@ -236,16 +271,23 @@ class TodoScreenState extends State<TodoScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6C5CE7)),
               onPressed: () {
-                if (repeats && selectedDays.isEmpty) {
+                if (mode == 2 && selectedDays.isEmpty) {
                   ScaffoldMessenger.of(ctx).showSnackBar(
-                    const SnackBar(content: Text('Pick at least one day, or choose "Just today"')),
+                    const SnackBar(content: Text('Pick at least one day, or choose "Just today" / "Every day"')),
                   );
                   return;
                 }
-                Navigator.pop(
-                  ctx,
-                  _RepeatChoice(repeats: repeats, days: selectedDays.toList()..sort()),
-                );
+
+                if (mode == 0) {
+                  Navigator.pop(ctx, _RepeatChoice(repeats: false, days: []));
+                } else if (mode == 1) {
+                  Navigator.pop(ctx, _RepeatChoice(repeats: true, days: [1, 2, 3, 4, 5, 6, 7]));
+                } else {
+                  Navigator.pop(
+                    ctx,
+                    _RepeatChoice(repeats: true, days: selectedDays.toList()..sort()),
+                  );
+                }
               },
               child: const Text('Done', style: TextStyle(color: Colors.white)),
             ),
@@ -328,6 +370,63 @@ class TodoScreenState extends State<TodoScreen> {
     }
   }
 
+  void _toggleSelectionMode() {
+    setState(() {
+      _selectionMode = !_selectionMode;
+      _selectedTaskIds.clear();
+    });
+  }
+
+  void _toggleSelectAll() {
+    final tasks = _visibleTasks;
+    final allSelected = tasks.isNotEmpty && tasks.every((t) => _selectedTaskIds.contains(t.id));
+    setState(() {
+      if (allSelected) {
+        _selectedTaskIds.clear();
+      } else {
+        _selectedTaskIds
+          ..clear()
+          ..addAll(tasks.map((t) => t.id));
+      }
+    });
+  }
+
+  void _toggleTaskSelected(_Task task) {
+    setState(() {
+      if (_selectedTaskIds.contains(task.id)) {
+        _selectedTaskIds.remove(task.id);
+      } else {
+        _selectedTaskIds.add(task.id);
+      }
+    });
+  }
+
+  Future<void> _deleteSelectedTasks() async {
+    if (_selectedTaskIds.isEmpty) return;
+
+    final idsToDelete = _selectedTaskIds.toList();
+    final removedTasks = _tasks.where((t) => idsToDelete.contains(t.id)).toList();
+
+    setState(() {
+      _tasks.removeWhere((t) => idsToDelete.contains(t.id));
+      _selectedTaskIds.clear();
+      _selectionMode = false;
+    });
+
+    try {
+      await _supabase.from('tasks').delete().inFilter('id', idsToDelete);
+    } catch (e) {
+      setState(() {
+        _tasks.insertAll(0, removedTasks);
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete tasks: $e')),
+        );
+      }
+    }
+  }
+
   String _ordinal(int day) {
     if (day >= 11 && day <= 13) return '${day}th';
     switch (day % 10) {
@@ -377,7 +476,7 @@ class TodoScreenState extends State<TodoScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildTopBar(),
+            const AppTopBar(),
             const SizedBox(height: 12),
             Text(
               'To-do List',
@@ -387,7 +486,9 @@ class TodoScreenState extends State<TodoScreen> {
             _buildInfoCards(now),
             const SizedBox(height: 16),
             _buildFilterTabs(),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
+            _buildSelectionBar(),
+            const SizedBox(height: 4),
             _buildAddTaskRow(),
             const SizedBox(height: 12),
             _buildTaskList(),
@@ -397,65 +498,9 @@ class TodoScreenState extends State<TodoScreen> {
     );
   }
 
-  Widget _buildTopBar() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))],
-          ),
-          child: const Icon(Icons.checklist_rounded, color: Color(0xFF1E1C3B)),
-        ),
-        Row(
-          children: [
-            GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-              ),
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  const Icon(Icons.notifications_none_rounded, color: Color(0xFF1E1C3B), size: 26),
-                  Positioned(
-                    top: -1,
-                    right: -1,
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 14),
-            GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ProfileDetailScreen()),
-              ),
-              child: Container(
-                width: 44,
-                height: 44,
-                decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFE2DDFE)),
-                child: const Icon(Icons.person_rounded, color: Color(0xFF6C5CE7)),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
   Widget _buildInfoCards(DateTime now) {
-    final streakValue = _stats != null ? '${_stats!.currentStreak}' : '—';
-    final xpValue = _stats != null ? '${_stats!.totalXp}+ Xp' : '— Xp';
+    final streakValue = _stats != null ? '${_stats!.currentStreak}' : '?';
+    final xpValue = _stats != null ? '${_stats!.totalXp}+ Xp' : '? Xp';
 
     return Row(
       children: [
@@ -590,6 +635,76 @@ class TodoScreenState extends State<TodoScreen> {
     );
   }
 
+  /// Row under the filter tabs. Idle: a single "select mode" icon button.
+  /// Active: select-all icon, a delete icon (with count badge), and a
+  /// close icon to cancel — all icons, no text buttons.
+  Widget _buildSelectionBar() {
+    final tasks = _visibleTasks;
+    final allSelected = tasks.isNotEmpty && tasks.every((t) => _selectedTaskIds.contains(t.id));
+
+    if (!_selectionMode) {
+      return Align(
+        alignment: Alignment.centerRight,
+        child: IconButton(
+          onPressed: tasks.isEmpty ? null : _toggleSelectionMode,
+          tooltip: 'Select tasks',
+          icon: Icon(
+            Icons.playlist_add_check_rounded,
+            color: tasks.isEmpty ? const Color(0xFFC7C5DE) : const Color(0xFF6C5CE7),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        IconButton(
+          onPressed: _toggleSelectAll,
+          tooltip: allSelected ? 'Deselect all' : 'Select all',
+          icon: Icon(
+            allSelected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+            color: const Color(0xFF6C5CE7),
+          ),
+        ),
+        Row(
+          children: [
+            if (_selectedTaskIds.isNotEmpty)
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  IconButton(
+                    onPressed: _deleteSelectedTasks,
+                    tooltip: 'Delete selected',
+                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+                  ),
+                  Positioned(
+                    right: 4,
+                    top: 4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                      constraints: const BoxConstraints(minWidth: 14),
+                      decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                      child: Text(
+                        '${_selectedTaskIds.length}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            IconButton(
+              onPressed: _toggleSelectionMode,
+              tooltip: 'Cancel',
+              icon: const Icon(Icons.close_rounded, color: Color(0xFF8B8C9E)),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildAddTaskRow() {
     return GestureDetector(
       onTap: _addTask,
@@ -613,7 +728,6 @@ class TodoScreenState extends State<TodoScreen> {
               child: Text('Add New Task',
                   style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w800, color: const Color(0xFF6C5CE7))),
             ),
-            const Icon(Icons.auto_awesome_rounded, size: 18, color: Color(0xFF6C5CE7)),
           ],
         ),
       ),
@@ -640,6 +754,7 @@ class TodoScreenState extends State<TodoScreen> {
       child: Column(
         children: List.generate(tasks.length, (i) {
           final task = tasks[i];
+          final isSelected = _selectedTaskIds.contains(task.id);
           return Column(
             children: [
               Padding(
@@ -647,60 +762,75 @@ class TodoScreenState extends State<TodoScreen> {
                 child: Row(
                   children: [
                     GestureDetector(
-                      onTap: () => _toggleTask(task),
+                      onTap: () {
+                        if (_selectionMode) {
+                          _toggleTaskSelected(task);
+                        } else {
+                          _toggleTask(task);
+                        }
+                      },
                       child: Container(
                         width: 26,
                         height: 26,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: task.completed ? const Color(0xFF6C5CE7) : Colors.transparent,
+                          color: _selectionMode
+                              ? (isSelected ? const Color(0xFF6C5CE7) : Colors.transparent)
+                              : (task.completed ? const Color(0xFF6C5CE7) : Colors.transparent),
                           border: Border.all(color: const Color(0xFF6C5CE7), width: 2),
                         ),
-                        child: task.completed ? const Icon(Icons.check_rounded, size: 16, color: Colors.white) : null,
+                        child: _selectionMode
+                            ? (isSelected ? const Icon(Icons.check_rounded, size: 16, color: Colors.white) : null)
+                            : (task.completed ? const Icon(Icons.check_rounded, size: 16, color: Colors.white) : null),
                       ),
                     ),
                     const SizedBox(width: 14),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            task.title,
-                            style: GoogleFonts.nunito(
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w800,
-                              color: task.completed ? const Color(0xFF8B8C9E) : const Color(0xFF1E1C3B),
-                              decoration: task.completed ? TextDecoration.lineThrough : null,
-                            ),
-                          ),
-                          if (task.repeats && task.repeatDays.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.repeat_rounded, size: 12, color: Color(0xFF6C5CE7)),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    _repeatLabel(task.repeatDays),
-                                    style: GoogleFonts.nunito(fontSize: 10.5, fontWeight: FontWeight.w700, color: const Color(0xFF6C5CE7)),
-                                  ),
-                                ],
+                      child: GestureDetector(
+                        onTap: _selectionMode ? () => _toggleTaskSelected(task) : null,
+                        behavior: HitTestBehavior.opaque,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              task.title,
+                              style: GoogleFonts.nunito(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w800,
+                                color: task.completed ? const Color(0xFF8B8C9E) : const Color(0xFF1E1C3B),
+                                decoration: task.completed ? TextDecoration.lineThrough : null,
                               ),
                             ),
-                        ],
+                            if (task.repeats && task.repeatDays.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.repeat_rounded, size: 12, color: Color(0xFF6C5CE7)),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      _repeatLabel(task.repeatDays),
+                                      style: GoogleFonts.nunito(fontSize: 10.5, fontWeight: FontWeight.w700, color: const Color(0xFF6C5CE7)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
-                    PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_horiz_rounded, color: Color(0xFF8B8C9E)),
-                      onSelected: (value) {
-                        if (value == 'edit') _editTask(task);
-                        if (value == 'delete') _deleteTask(task);
-                      },
-                      itemBuilder: (ctx) => [
-                        const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                        const PopupMenuItem(value: 'delete', child: Text('Delete')),
-                      ],
-                    ),
+                    if (!_selectionMode)
+                      PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_horiz_rounded, color: Color(0xFF8B8C9E)),
+                        onSelected: (value) {
+                          if (value == 'edit') _editTask(task);
+                          if (value == 'delete') _deleteTask(task);
+                        },
+                        itemBuilder: (ctx) => [
+                          const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                          const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                        ],
+                      ),
                   ],
                 ),
               ),
